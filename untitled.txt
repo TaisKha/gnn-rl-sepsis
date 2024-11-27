@@ -1,0 +1,17 @@
+Training algorithm in the natural language description.
+
+Choose randomly which trajectory ids are in training(80%) and testing(20%).
+Create 2 lists for that. DO IT LATER!
+
+Training.
+
+1. DEFINE DQN GNN.
+2. CREATE REPLAY BUFFER
+3. TRAIN
+
+
+    
+
+
+Validation.
+
