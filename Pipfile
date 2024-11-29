@@ -9,6 +9,7 @@ pandas = "*"
 neo4j = "*"
 seaborn = "*"
 python-dotenv = "*"
+networkx = "*"
 
 [dev-packages]
 

@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "13acaa5a0dc567096598bf1529e872881d30bff8a77454420294ab438a12673d"
+            "sha256": "35b087b76aefe072412549eea7de987fff32f58bf128b099cf6a491fb38f57f0"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -428,12 +428,12 @@
         },
         "neo4j": {
             "hashes": [
-                "sha256:511a6a9468ca89b521bf686f885a2070acc462b1d09821d43710bd477acdf11e",
-                "sha256:51b25ba127b7b9fdae1ddf48ae697ddfab331e60f4b6d8488d1fc1f74ec60dcc"
+                "sha256:929c14b9e5341267324eca170b39d1798b032bffacc26a0529eacaf678ae483f",
+                "sha256:f82ee807cd15b178898d83f41a66372e11719a25dd487fd7bea48fd4b7323765"
             ],
             "index": "pypi",
             "markers": "python_version >= '3.7'",
-            "version": "==5.26.0"
+            "version": "==5.27.0"
         },
         "nest-asyncio": {
             "hashes": [
@@ -442,6 +442,15 @@
             ],
             "markers": "python_version >= '3.5'",
             "version": "==1.6.0"
+        },
+        "networkx": {
+            "hashes": [
+                "sha256:307c3669428c5362aab27c8a1260aa8f47c4e91d3891f48be0141738d8d053e1",
+                "sha256:df5d4365b724cf81b8c6a7312509d0c22386097011ad1abe274afd5e9d3bbc5f"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.10'",
+            "version": "==3.4.2"
         },
         "numpy": {
             "hashes": [
@@ -501,7 +510,7 @@
                 "sha256:f653490b33e9c3a4c1c01d41bc2aef08f9475af51146e4a7710c450cf9761598",
                 "sha256:fa2d1337dc61c8dc417fbccf20f6d1e139896a30721b7f1e832b2bb6ef4eb6c4"
             ],
-            "markers": "python_version >= '3.12'",
+            "markers": "python_version >= '3.10'",
             "version": "==2.1.3"
         },
         "packaging": {
