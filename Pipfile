@@ -10,6 +10,9 @@ neo4j = "*"
 seaborn = "*"
 python-dotenv = "*"
 networkx = "*"
+torch-geometric = "*"
+torch = "*"
+torchvision = "*"
 
 [dev-packages]
 
