@@ -13,8 +13,14 @@ networkx = "*"
 torch-geometric = "*"
 torch = "*"
 torchvision = "*"
+numpy = "<2.0"
+scipy = "*"
+d4rl = {ref = "master", git = "git+https://github.com/Farama-Foundation/d4rl"}
+mujoco-py = "<2.2,>=2.1"
+pyrallis = "*"
+wandb = "*"
 
 [dev-packages]
 
 [requires]
-python_version = "3.12"
+python_version = "3.10"
