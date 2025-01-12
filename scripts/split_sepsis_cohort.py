@@ -22,7 +22,7 @@ import numpy as np
 
 from sklearn.model_selection import train_test_split
 
-save_dir = '../data/sepsis_mimiciii/'
+save_dir = '../data/'
 train_file = 'train_set_tuples'
 val_file = 'val_set_tuples'
 test_file = 'test_set_tuples'
@@ -31,7 +31,7 @@ test_file = 'test_set_tuples'
 full_data_file = os.path.join(save_dir, 'sepsis_final_data_withTimes.csv')
 # acuity_scores_file = os.path.join(save_dir, 'acuity_scores.csv')  # These are extracted using derive_acuities.py
 
-full_zs = pd.read_csv(full_data_file)
+full_zs = pd.read_csv(full_data_file, sep=";")
 # acuity_scores = pd.read_csv(acuity_scores_file)
 
 ## Determine the train, val, test split (70/15/15), stratified by patient outcome
@@ -125,9 +125,12 @@ data_trajectory['neg_traj'] = []
 for i in trajectories:
     # bar.update()
     traj_i = train_data[train_data['traj'] == i].sort_values(by='step')
-    traj_j = train_acuity[train_acuity['traj']==i].sort_values(by='step')
+    # traj_j = train_acuity[train_acuity['traj']==i].sort_values(by='step')
     data_trajectory['traj'][i] = {}
-    data_trajectory['traj'][i]['dem'] = torch.Tensor(traj_i[dem_cols].values).to('cpu')
+    print(f'{traj_i=}')
+    print(f'{traj_i[dem_cols].values=}')
+    print(f'{type(traj_i[dem_cols].values.astype(np.float64))=}')
+    data_trajectory['traj'][i]['dem'] = torch.Tensor(traj_i[dem_cols].values.astype(np.float64)).to('cpu')
     data_trajectory['traj'][i]['obs'] = torch.Tensor(traj_i[obs_cols].values).to('cpu')
     data_trajectory['traj'][i]['actions'] = torch.Tensor(traj_i[ac_col].values.astype(np.int32)).to('cpu').long()
     data_trajectory['traj'][i]['rewards'] = torch.Tensor(traj_i[rew_col].values).to('cpu')
@@ -188,7 +191,7 @@ val_data_trajectory['neg_traj'] = []
 
 for j in val_trajectories:
     traj_j = val_data[val_data['traj']==j].sort_values(by='step')
-    traj_k = val_acuity[val_acuity['traj']==j].sort_values(by='step')
+    # traj_k = val_acuity[val_acuity['traj']==j].sort_values(by='step')
     val_data_trajectory['traj'][j] = {}
     val_data_trajectory['traj'][j]['dem'] = torch.Tensor(traj_j[dem_cols].values).to('cpu')
     val_data_trajectory['traj'][j]['obs'] = torch.Tensor(traj_j[obs_cols].values).to('cpu')
@@ -213,7 +216,7 @@ for jj, traj in enumerate(val_trajectories):
     dem = val_data_trajectory['traj'][traj]['dem']
     action = val_data_trajectory['traj'][traj]['actions'].view(-1,1)
     reward = val_data_trajectory['traj'][traj]['rewards']
-    acuity = val_data_trajectory['traj'][traj]['acuity']
+    # acuity = val_data_trajectory['traj'][traj]['acuity']
     length = obs.shape[0]
     val_lengths[jj] = length
     temp = action_temp[action].squeeze(1)
@@ -251,7 +254,7 @@ test_data_trajectory['neg_traj'] = []
 
 for j in test_trajectories:
     traj_j = test_data[test_data['traj']==j].sort_values(by='step')
-    traj_k = test_acuity[test_acuity['traj']==j].sort_values(by='step')
+    # traj_k = test_acuity[test_acuity['traj']==j].sort_values(by='step')
     test_data_trajectory['traj'][j] = {}
     test_data_trajectory['traj'][j]['obs'] = torch.Tensor(traj_j[obs_cols].values).to('cpu')
     test_data_trajectory['traj'][j]['dem'] = torch.Tensor(traj_j[dem_cols].values).to('cpu')
@@ -269,7 +272,7 @@ test_actions = torch.zeros((len(test_trajectories), horizon-1, num_actions))
 test_lengths = torch.zeros((len(test_trajectories)), dtype=torch.int)
 test_times = torch.zeros((len(test_trajectories), horizon))
 test_rewards = torch.zeros((len(test_trajectories), horizon))
-test_acuities = torch.zeros((len(test_trajectories), horizon-1, num_acuity_scores))
+# test_acuities = torch.zeros((len(test_trajectories), horizon-1, num_acuity_scores))
 action_temp = torch.eye(25)
 for jj, traj in enumerate(test_trajectories):
     obs = test_data_trajectory['traj'][traj]['obs']
@@ -302,11 +305,11 @@ test_lengths = test_lengths[test_lengths>1.0].to(device)
 #############################
 print("Saving off tuples")
 print("..."*20)
-torch.save((demographics,observations,actions,lengths,times,acuities,rewards),os.path.join(save_dir,train_file))
+torch.save((demographics,observations,actions,lengths,times,rewards),os.path.join(save_dir,train_file))
 
-torch.save((val_dem,val_obs,val_actions,val_lengths,val_times,val_acuities,val_rewards),os.path.join(save_dir,val_file))
+torch.save((val_dem,val_obs,val_actions,val_lengths,val_times,val_rewards),os.path.join(save_dir,val_file))
 
-torch.save((test_dem,test_obs,test_actions,test_lengths,test_times,test_acuities,test_rewards),os.path.join(save_dir,test_file))
+torch.save((test_dem,test_obs,test_actions,test_lengths,test_times,test_rewards),os.path.join(save_dir,test_file))
 
 print("\n")
 print("Finished conversion")

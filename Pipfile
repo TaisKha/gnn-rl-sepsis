@@ -19,6 +19,7 @@ d4rl = {ref = "master", git = "git+https://github.com/Farama-Foundation/d4rl"}
 mujoco-py = "<2.2,>=2.1"
 pyrallis = "*"
 wandb = "*"
+scikit-learn = "*"
 
 [dev-packages]
 
