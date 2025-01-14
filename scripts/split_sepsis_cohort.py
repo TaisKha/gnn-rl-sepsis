@@ -31,7 +31,7 @@ test_file = 'test_set_tuples'
 full_data_file = os.path.join(save_dir, 'sepsis_final_data_withTimes.csv')
 # acuity_scores_file = os.path.join(save_dir, 'acuity_scores.csv')  # These are extracted using derive_acuities.py
 
-full_zs = pd.read_csv(full_data_file, sep=";")
+full_zs = pd.read_csv(full_data_file)
 # acuity_scores = pd.read_csv(acuity_scores_file)
 
 ## Determine the train, val, test split (70/15/15), stratified by patient outcome
@@ -127,9 +127,9 @@ for i in trajectories:
     traj_i = train_data[train_data['traj'] == i].sort_values(by='step')
     # traj_j = train_acuity[train_acuity['traj']==i].sort_values(by='step')
     data_trajectory['traj'][i] = {}
-    print(f'{traj_i=}')
-    print(f'{traj_i[dem_cols].values=}')
-    print(f'{type(traj_i[dem_cols].values.astype(np.float64))=}')
+    # print(f'{traj_i=}')
+    # print(f'{traj_i[dem_cols].values=}')
+    # print(f'{type(traj_i[dem_cols].values.astype(np.float64))=}')
     data_trajectory['traj'][i]['dem'] = torch.Tensor(traj_i[dem_cols].values.astype(np.float64)).to('cpu')
     data_trajectory['traj'][i]['obs'] = torch.Tensor(traj_i[obs_cols].values).to('cpu')
     data_trajectory['traj'][i]['actions'] = torch.Tensor(traj_i[ac_col].values.astype(np.int32)).to('cpu').long()
