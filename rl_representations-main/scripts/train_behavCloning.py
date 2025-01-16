@@ -19,6 +19,7 @@ import argparse
 import os
 import sys
 import numpy as np
+import yaml
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
@@ -71,39 +72,52 @@ def run(BC_network, train_dataloader, val_dataloader, num_epochs, storage_dir, l
 if __name__ == '__main__':
 
     # Define input arguments and parameters
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--demographics', dest='dem_context', default=true, action='store_true')
-    parser.add_argument('--num_nodes', dest='num_nodes', default=128, type=int)
-    parser.add_argument('--learning_rate', dest='learning_rate', default=1e-4, type=float)
-    parser.add_argument('--storage_folder', dest='storage_folder', default='test', type=str)
-    parser.add_argument('--batch_size', dest='batch_size', default=128, type=int)
-    parser.add_argument('--num_epochs', dest='num_epochs', default=5000, type=int)
-    parser.add_argument('--weight_decay', dest='weight_decay', default=0.1, type=float)
-    parser.add_argument('--optimizer_type', dest='optim_type', default='adam', type=str)
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--demographics', dest='dem_context', default=True, action='store_true')
+    # parser.add_argument('--num_nodes', dest='num_nodes', default=128, type=int)
+    # parser.add_argument('--learning_rate', dest='learning_rate', default=1e-4, type=float)
+    # parser.add_argument('--storage_folder', dest='storage_folder', default='test', type=str)
+    # parser.add_argument('--batch_size', dest='batch_size', default=128, type=int)
+    # parser.add_argument('--num_epochs', dest='num_epochs', default=5000, type=int)
+    # parser.add_argument('--weight_decay', dest='weight_decay', default=0.1, type=float)
+    # parser.add_argument('--optimizer_type', dest='optim_type', default='adam', type=str)
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
+
+
+    args = yaml.safe_load(open('config_behavCloning.yaml', 'r'))
     
     # setting device on GPU if available, else CPU
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if args['device'] == 'cuda':
+        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    elif args['device'] == 'cpu':
+        device = torch.device('cpu')
+    else:
+        print("Please set device to 'cuda' or 'cpu'")
+        exit(1)
+
     print('Using device:', device)
-    print()
     
+
+    if not args['dem_context']:
+        print("I want to use demographics only, please set dem_context to True")
+        exit(1)
 
     input_dim = 38 if args.dem_context else 33
     num_actions = 25
 
-    # Set names of the training and validation buffer files
-    # How do files appear there?
-    if args.dem_context:
-        train_buffer_file = '/scratch/ssd001/home/tkillian/ml4h2020_srl/raw_data_buffers/train_buffer' 
-        validation_buffer_file = '/scratch/ssd001/home/tkillian/ml4h2020_srl/raw_data_buffers/val_buffer'
-    else:
-        train_buffer_file = '/scratch/ssd001/home/tkillian/ml4h2020_srl/raw_data_buffers/train_noCntxt_buffer' 
-        validation_buffer_file = '/scratch/ssd001/home/tkillian/ml4h2020_srl/raw_data_buffers/val_noCntxt_buffer'
+    train_buffer_file = args['train_buffer_file']
+    validation_buffer_file = args['validation_buffer_file']
+
+    # if args.dem_context:
+    #     train_buffer_file = '/Users/taiskha/Master Thesis/code/data/replay_buffer_without_encoding/train_buffer' 
+    #     validation_buffer_file = '/Users/taiskha/Master Thesis/code/data/replay_buffer_without_encoding/val_buffer'
+    # else:
+    #     train_buffer_file = '/scratch/ssd001/home/tkillian/ml4h2020_srl/raw_data_buffers/train_noCntxt_buffer' 
+    #     validation_buffer_file = '/scratch/ssd001/home/tkillian/ml4h2020_srl/raw_data_buffers/val_noCntxt_buffer'
 
     # Storage folder name is imported from
-    storage_dir = './BehavCloning/' + args.storage_folder + '/'
-
+    storage_dir = args['storage_folder']
     if not os.path.exists(storage_dir):
         os.mkdir(storage_dir)
 

@@ -23,7 +23,7 @@ import torch.nn.functional as F
 import os
 from models.common import mask_from_lengths
 from torch.utils.data import DataLoader
-from models.NeuralCDE.metamodel import NeuralCDE
+# from models.NeuralCDE.metamodel import NeuralCDE
 import controldiffeq
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,7 @@ def one_hot(x, num_x, data_type='numpy', device=None):
     res[x] = 1.0
     return res
 
+
 def process_cde_data(loader, context_input, device):
     assert(len(loader) == 1)
     for dem, ob, ac, l, t, scores, rewards, idx in loader: 
@@ -118,6 +119,7 @@ def process_cde_data(loader, context_input, device):
     
     coeffs = controldiffeq.natural_cubic_spline_coeffs(times, augmented_X)
     return coeffs
+
 
 def load_cde_data(fold, dataset, path, context_input, device):
     fname = os.path.join(path, f'{fold}_{str(context_input)}')

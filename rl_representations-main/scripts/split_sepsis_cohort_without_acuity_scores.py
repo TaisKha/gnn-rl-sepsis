@@ -302,37 +302,6 @@ test_lengths = test_lengths[test_lengths>1.0].to(device)
 #############################
 print("Saving off tuples")
 print("..."*20)
-
-# IMPORTANT: Observations and demographics were padded with zeroes up to the horizon length, which is 21 that is max steps in a trajectory
-# This is done to ensure that all trajectories are of the same length, and can be batched together in a dataloader
-# The times tensor is the same for each trajectory, and is just the vector [0,1,2,...,20]
-# The lengths tensor is used to keep track of the time steps in the trajectory. One interger per trajectory
-# Dimensions are:
-    # Demographics:  torch.Size([12988, 21, 5])
-    # Observations:  torch.Size([12988, 21, 33])
-    # Actions:  torch.Size([12988, 20, 25])
-    # Lengths:  torch.Size([12988])
-    # Times:  torch.Size([12988, 21])
-    # Acuities:  torch.Size([12988, 20, 3])
-    # Rewards:  torch.Size([12988, 21])
-# print dimensions of demographics, observations, actions, lengths, times, acuities, rewards
-print("Demographics: ", demographics.shape)
-print("Observations: ", observations.shape)
-print("Actions: ", actions.shape)
-print("Lengths: ", lengths.shape)
-print("Times: ", times.shape)
-print("Acuities: ", acuities.shape)
-print("Rewards: ", rewards.shape)
-
-# print first 2 elements of demographics, observations, actions, lengths, times, acuities, rewards
-print("Demographics: ", demographics[:2])
-print("Observations: ", observations[:2])
-print("Actions: ", actions[:2])
-print("Lengths: ", lengths[:2])
-print("Times: ", times[:2])
-print("Acuities: ", acuities[:2])
-print("Rewards: ", rewards[:2])
-
 torch.save((demographics,observations,actions,lengths,times,acuities,rewards),os.path.join(save_dir,train_file))
 
 torch.save((val_dem,val_obs,val_actions,val_lengths,val_times,val_acuities,val_rewards),os.path.join(save_dir,val_file))
