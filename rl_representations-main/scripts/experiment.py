@@ -429,6 +429,10 @@ class Experiment(object):
                     cur_actions = ac[:,:-1,:]
                     cur_rewards = rewards[:,:-1]
                     cur_scores = scores[:,:-1,:]
+
+                    # With this mask agent will be punished for predicting the next observation when the next observation is a padding
+                    # Just saying though. If we don't want to punish the agent for that, we can create the mast based on the next_obs.
+                    # I won't change it for the reproducability purposes, but it is something to consider for future.
                     mask = (cur_obs==0).all(dim=2)
                     
                     self.gen.eval()
@@ -437,6 +441,7 @@ class Experiment(object):
                     if self.autoencoder in ['AE', 'AIS', 'RNN']:
 
                         if self.context_input:
+                            # here all the actions from the batch for almost all the timesteps(minus 2) are included in the input,they are added to the input to the generator
                             representations = self.gen(torch.cat((cur_obs, cur_dem, torch.cat((torch.zeros((ob.shape[0],1,ac.shape[-1])).to(self.device),ac[:,:-2,:]),dim=1)),dim=-1))
                         else:
                             representations = self.gen(torch.cat((cur_obs, torch.cat((torch.zeros((ob.shape[0],1,ac.shape[-1])).to(self.device), ac[:,:-2,:]),dim=1)), dim=-1))
@@ -444,8 +449,9 @@ class Experiment(object):
                         if self.autoencoder == 'RNN':
                             pred_obs = self.pred(representations)
                         else:
+                            # why here the actions are not padded with zero on the zero timestep and end at timstep-2 as above?
                             pred_obs = self.pred(torch.cat((representations,cur_actions),dim=-1))
-
+                        # 
                         pred_error = F.mse_loss(next_obs[~mask], pred_obs[~mask])
 
                     elif self.autoencoder == 'DDM':
