@@ -88,6 +88,7 @@ class BehaviorCloning(object):
 		self.lr = learning_rate
 
 		# Initialize the network
+		# with dem -> inputdim = 38, num_actions = 25, num_nodes = 128 from the file
 		self.model = FC_BC(input_dim, num_actions, num_nodes).to(self.device)
 		self.loss_func = nn.CrossEntropyLoss()
 		if optimizer_type == 'adam':		

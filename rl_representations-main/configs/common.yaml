@@ -14,9 +14,6 @@ num_actions: 25
 context_dim: 5                     # Number of context/demographic/binary indicator variables we'll use as input
 
 
-size_of_replay_buffer_train: 200000
-size_of_replay_buffer_val: 50000
-
 dem_context: True
 # update these manually
 storage_path: '/scratch/hdd001/home/haoran/ml4h2020_srl_test/'
@@ -27,4 +24,3 @@ test_data_file: '/Users/taiskha/Master Thesis/code/data/test_set_tuples'
 
 behav_policy_file_wDemo: '/scratch/ssd001/home/tkillian/ml4h2020_srl/BehavCloning/BC_l1e-5_n64_w0_sgd_withDemo/BC_model.pt'
 behav_policy_file: '/scratch/ssd001/home/tkillian/ml4h2020_srl/BehavCloning/BC_l1e-5_n64_w0_sgd/BC_model.pt'
-
