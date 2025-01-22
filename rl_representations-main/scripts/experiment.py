@@ -27,42 +27,43 @@ Notes:
 
 '''
 import numpy as np
-import pandas as pd
-import operator
+# import pandas as pd
+# import operator
 import torch
-import torch.nn as nn
+# import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from itertools import chain
 
-import signatory
+# import signatory
 
-from sklearn.cluster import MiniBatchKMeans
-from sklearn.mixture import GaussianMixture
+# from sklearn.cluster import MiniBatchKMeans
+# from sklearn.mixture import GaussianMixture
 from utils import one_hot, load_cde_data, process_cde_data, ReplayBuffer
 import os
-import copy
-import pickle
+# import copy
+# import pickle
 
 from dBCQ_utils import *
 
-from models import AE, AIS, CDE, DST, DDM, RNN, ODERNN
+# from models import AE, AIS, CDE, DST, DDM, RNN, ODERNN
+from models import RNN
 from models.common import get_dynamics_losses, pearson_correlation, mask_from_lengths
 
 class Experiment(object): 
-    def __init__(self, domain, train_data_file, validation_data_file, test_data_file, minibatch_size, rng, device,
+    def __init__(self, domain, train_data_file, validation_data_file, test_data_file, minibatch_size, device,
                  behav_policy_file_wDemo, behav_policy_file,
                 context_input=False, context_dim=0, drop_smaller_than_minibatch=True, 
                 folder_name='/Name', autoencoder_saving_period=20, resume=False, sided_Q='negative',  
                 autoencoder_num_epochs=50, autoencoder_lr=0.001, autoencoder='AIS', hidden_size=16, ais_gen_model=1, 
                 ais_pred_model=1, embedding_dim=4, state_dim=42, num_actions=25, corr_coeff_param=10, dst_hypers = {},
-                 cde_hypers = {}, odernn_hypers = {},  **kwargs):
+                 cde_hypers = {}, odernn_hypers = {},  bc_num_nodes = 64, **kwargs):
         '''
         We assume discrete actions and scalar rewards!
         '''
-
-        self.rng = rng
+        # self.rng is not used in the code
+        # self.rng = rng
         self.device = device
         self.train_data_file = train_data_file
         self.validation_data_file = validation_data_file
@@ -78,6 +79,9 @@ class Experiment(object):
         self.num_actions = num_actions
         self.state_dim = state_dim
         self.corr_coeff_param = corr_coeff_param
+
+        print("DEBUGGING: bc_num_nodes = ", bc_num_nodes)
+        self.bc_num_nodes = bc_num_nodes
 
         self.context_input = context_input # Check to see if we'll one-hot encode the categorical contextual input
         self.context_dim = context_dim # Check to see if we'll remove the context from the input and only use it for decoding
@@ -564,7 +568,8 @@ class Experiment(object):
 
         # Load the pretrained policy for whether or not the demographic context was used to train the representations 
         behav_input = self.state_dim + (self.context_dim if self.context_input else 0)
-        behav_pol = FC_BC(behav_input, self.num_actions, 64).to(self.device)
+        # Here 64 was hardcoded, but it should correspond to the num_nodes in the FC_BC class at the BC training
+        behav_pol = FC_BC(behav_input, self.num_actions, self.bc_num_nodes).to(self.device)
         if self.context_input:
             behav_pol.load_state_dict(torch.load(self.behav_policy_file_wDemo))
         else:

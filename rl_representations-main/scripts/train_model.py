@@ -19,14 +19,13 @@ Notes:
 
 '''
 
-import random
 import os
 import sys
-import pickle
 import click
 import yaml
 import numpy as np
 from experiment import Experiment
+from pprint import pprint
 
 import torch
 
@@ -42,6 +41,9 @@ def run(autoencoder, domain, options):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     params = yaml.safe_load(open(os.path.join(dir_path, '../configs/common.yaml'), 'r'))    
     cfg_file = os.path.join(dir_path, '../configs/config_' + domain + f'_{autoencoder.lower()}.yaml')
+
+    bc_config = yaml.safe_load(open(os.path.join(dir_path, '../configs/config_behavCloning.yaml'), 'r'))
+
     model_params = yaml.safe_load(open(cfg_file, 'r'))
     
     if autoencoder == 'CDE':
@@ -50,6 +52,10 @@ def run(autoencoder, domain, options):
     # Iterating over the keys in model_params and replacing the values in params merging the two dictionaries
     for i in model_params:
         params[i] = model_params[i]        
+    
+    # Extract BC network number of nodes
+    params['bc_num_nodes'] = bc_config['num_nodes']
+   
 
     # Overriding params from config file with command line options if provided
     for opt in options:
@@ -80,10 +86,11 @@ def run(autoencoder, domain, options):
     np.random.seed(random_seed)
     torch.manual_seed(random_seed)
     random_state = np.random.RandomState(random_seed)
-    params['rng'] = random_state
+    # rng is not used in the code later
+    # params['rng'] = random_state
     params['domain'] = domain
         
-    # Update foldername to the full path
+    # Update foldername to the full path 
     folder_name = params['storage_path'] + params['folder_location'] + params['folder_name']
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
@@ -101,6 +108,7 @@ def run(autoencoder, domain, options):
     experiment.train_dBCQ_policy(params['pol_learning_rate'])
     print('=' * 30)
 
+    pprint(params)
     with open(folder_name + '/config.yaml', 'w') as y:
         yaml.safe_dump(params, y)  # saving params for reference
 

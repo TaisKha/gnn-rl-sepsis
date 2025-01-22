@@ -269,6 +269,7 @@ def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_
 	while training_iters < parameters["max_timesteps"]:
 
 		for _ in range(int(parameters["eval_freq"])):
+			# Inside of this policy.train() function, the policy will be trained on one batch sampled from the replay buffer
 			policy.train(replay_buffer)
 
 		evaluations.append(eval_policy(policy, behav_pol, pol_eval_dataloader, parameters["discount"], is_demog, device))  # TODO Run weighted importance sampling with learned policy and behavior policy
@@ -290,6 +291,7 @@ def eval_policy(policy, behav_policy, pol_dataloader, discount, is_demog, device
 
 	# Loop through the dataloader (representations, observations, actions, demographics, rewards)
 	for representations, obs_state, actions, demog, rewards in pol_dataloader:
+		# why in dataloader is there a tuple of 5 tensors?
 		representations = representations.to(device)
 		obs_state = obs_state.to(device)
 		actions = actions.to(device)

@@ -16,11 +16,11 @@ context_dim: 5                     # Number of context/demographic/binary indica
 
 dem_context: True
 # update these manually
-storage_path: '/scratch/hdd001/home/haoran/ml4h2020_srl_test/'
+storage_path: '/Users/taiskha/Master Thesis/code/'
 
 train_data_file: '/Users/taiskha/Master Thesis/code/data/train_set_tuples'
 validation_data_file: '/Users/taiskha/Master Thesis/code/data/val_set_tuples'
 test_data_file: '/Users/taiskha/Master Thesis/code/data/test_set_tuples'
 
-behav_policy_file_wDemo: '/scratch/ssd001/home/tkillian/ml4h2020_srl/BehavCloning/BC_l1e-5_n64_w0_sgd_withDemo/BC_model.pt'
+behav_policy_file_wDemo: '/Users/taiskha/Master Thesis/code/results/BC_Cloning/BC_model.pt'
 behav_policy_file: '/scratch/ssd001/home/tkillian/ml4h2020_srl/BehavCloning/BC_l1e-5_n64_w0_sgd/BC_model.pt'
