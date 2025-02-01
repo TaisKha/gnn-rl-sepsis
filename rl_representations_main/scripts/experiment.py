@@ -49,7 +49,7 @@ from dBCQ_utils import *
 
 # from models import AE, AIS, CDE, DST, DDM, RNN, ODERNN
 from models import RNN
-from models import HTGNN
+# from models import HTGNN
 from models.common import get_dynamics_losses, pearson_correlation, mask_from_lengths
 
 class Experiment(object): 
@@ -570,6 +570,13 @@ class Experiment(object):
         # Initialize a dataloader for policy evaluation (will need representations, observations, demographics, rewards and actions from the test dataset)
         test_representations = torch.load(self.test_representations_file)  # Load the test representations
         pol_eval_dataset = TensorDataset(test_representations, self.test_states, self.test_interventions, self.test_demog, self.test_rewards)
+        print("Debugging experiment.train_dBCQ_policy") 
+        print(f"{test_representations.shape=}") #torch.Size([2775, 19, 64])
+        print(f"{self.test_states.shape=}") #torch.Size([2775, 21, 33]) -> they are raw, not cut
+        print(f"{self.test_interventions.shape=}")# torch.Size([2775, 20, 25]) ->why here 20, and not 21? 
+        print(f"{self.test_demog.shape=}") #torch.Size([2775, 21, 5]) as observations
+        print(f"{self.test_rewards.shape=}") #torch.Size([2775, 21]) as observations
+
         pol_eval_dataloader = DataLoader(pol_eval_dataset, batch_size=self.minibatch_size, shuffle=False)
 
         # Initialize and Load the experience replay buffer corresponding with the current settings of rand_num, hidden_size, etc...

@@ -299,6 +299,13 @@ def eval_policy(policy, behav_policy, pol_dataloader, discount, is_demog, device
 
 		cur_obs, cur_actions = obs_state[:,:-2,:], actions[:,:-1,:].argmax(dim=-1)
 		cur_demog, cur_rewards = demog[:,:-2,:], rewards[:,:-2]
+		
+		print(f"Debugging eval policy:")
+		print(f"representations shape: {representations.shape}")
+		print(f"cur_obs shape: {cur_obs.shape}")
+		print(f"cur_actions shape: {cur_actions.shape}")
+		print(f"cur_demog shape: {cur_demog.shape}")
+		print(f"cur_rewards shape: {cur_rewards.shape}")
 
 		# Mask out the data corresponding to the padded observations
 		mask = (cur_obs==0).all(dim=2)

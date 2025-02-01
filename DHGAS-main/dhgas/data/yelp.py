@@ -68,8 +68,21 @@ def get_raw_data(file):
 
 
 def select_business(data, cates_included):
+    # this function can be refactored because the counter is not used at all, it just confused me and I spent time to understand what it does
+
+    print("DEBUG select business\n")
+    # print("data[0]=", data[0])
+    # data[0]= ['Pns2l4eNsfO8kk83dixA6A', 'Doctors, Traditional Chinese Medicine, Naturopathic/Holistic, Acupuncture, Health & Medical, Nutritionists']
     cate = [x[1] for x in data]
+    # print("cate debug")
+    # this counter does not make sense and is not used later at all
     cnt = Counter(cate)
+    #  print a few lines from the counter to see what is inside
+    for i, (k, v) in enumerate(cnt.items()):
+        print(k, v)
+        if i > 5:
+            break
+
     cnt = dict(sorted(cnt.items(), key=lambda item: -item[1]))
     business_included = []
     for x in data:
@@ -91,6 +104,7 @@ def select_business(data, cates_included):
 
 
 def parse_date(date, year=2012):
+    # Return month if the date is in the year
     y, m = date[:7].split("-")
     y = int(y)
     m = int(m)
@@ -133,12 +147,12 @@ class YelpDataset:
         self.metapath2vec = metapath2vec
         processed = osp.join(processed_datafile, f"{metapath2vec}-{word2vec_size}.pt")
         if osp.exists(processed):
-            # print(f'loading {processed}')
+            print(f'loading {processed}')
             dataset = torch.load(processed)
         else:
             os.makedirs(processed_datafile, exist_ok=True)
             dataset = self.preprocess(word2vec_size)
-            # print(f'saving {processed}')
+            print(f'saving {processed}')
             torch.save(dataset, processed)
 
         if undirected:
@@ -170,6 +184,7 @@ class YelpDataset:
 
     def preprocess(self, word2vec_size=32):
         data = self.preprocess1()
+        print("Starting metapath2vec")
         if self.metapath2vec:
             nodevecs = self._metapath2vec(data, emb_size=word2vec_size)
             data["user"].x = nodevecs["user"]
@@ -193,26 +208,30 @@ class YelpDataset:
         business, bid_set = select_business(
             rawdata["business"], cates_included
         )  # [bid,cate]
+        # print("business[0]:", business[0])
+        # print("bid_set:", bid_set)
         reviews = select_reviews(rawdata["review"], bid_set)  # [uid,bid,date]
+        # print("reviews:", reviews)
         tips = select_tips(rawdata["tip"], bid_set)  # [uid,bid,date]
+        # print("tips:", tips)
 
         # do mapping
-        bid2bname = list(Counter(business[:, 0]).keys())
-        bname2bid = map2id(bid2bname)
-        bname2cname = dict(x for x in business)
+        bid2bname = list(Counter(business[:, 0]).keys()) # list of business ids
+        bname2bid = map2id(bid2bname) # map business ids to integers
+        bname2cname = dict(x for x in business) # map business ids to categories
 
-        cid2cname = list(Counter(business[:, 1]).keys())
-        cname2cid = map2id(cid2cname)
+        cid2cname = list(Counter(business[:, 1]).keys()) # list of categories
+        cname2cid = map2id(cid2cname) # map categories to integers
 
-        users = list(reviews[:, 0]) + list(tips[:, 0])
-        uid2uname = list(Counter(users).keys())
-        uname2uid = map2id(uid2uname)
+        users = list(reviews[:, 0]) + list(tips[:, 0]) # list of user ids
+        uid2uname = list(Counter(users).keys()) # list of user ids
+        uname2uid = map2id(uid2uname) # map user ids to integers
 
-        times = list(reviews[:, 2]) + list(tips[:, 2])
+        times = list(reviews[:, 2]) + list(tips[:, 2]) # list of times
         tid2tname = sorted(
             list(map(int, list(Counter(times).keys())))
         )  # make sure times order!
-        tname2tid = map2id(tid2tname)
+        tname2tid = map2id(tid2tname) # map times to integers
         print("tname2tid:", tname2tid)
 
         # review link
@@ -319,7 +338,7 @@ class YelpNCLFDataset:
         self.test_full = test_full
 
         setup_seed(seed)  # seed preprocess
-        dataset = YelpDataset(undirected=True, metapath2vec=True)
+        dataset = YelpDataset(undirected=True, metapath2vec=False)
 
         setup_seed(seed)  # seed spliting
         times = dataset.times()  # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -352,14 +371,14 @@ class YelpNCLFDataset:
             time_merge = time_merge_edge_time
 
         maxn = 12
-        patchlen = maxn // time_window
+        patchlen = maxn // time_window # Number of time steps per patch
         self.time_dataset = time_merge(
             [
                 time_merge_edge_time([datas[i] for i in range(k, k + patchlen)])
                 for k in range(0, maxn, patchlen)
             ]
         )
-
+        print("times:", times)
         print("# time-dataset: ", len(self.time_dataset))
 
         print(
