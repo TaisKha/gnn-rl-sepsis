@@ -102,7 +102,8 @@ def run(autoencoder, domain, options):
     params[f'{autoencoder.lower()}_hypers'] = model_params # Cortex hyperparameter dictionaries 
     
     # Experiment
-    experiment = Experiment(**params)    
+    experiment = Experiment(**params)
+    experiment.gnn_training()
     # experiment.train_autoencoder()
     # experiment.train_autoencoder_gnn()
     # experiment.evaluate_trained_model()

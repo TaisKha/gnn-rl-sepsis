@@ -388,6 +388,182 @@ class Experiment(object):
                 np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
             except Exception as e:
                     print(e)
+
+    def gnn_training(self):
+        print('Experiment: training autoencoder')
+        device = self.device
+        
+        if self.autoencoder != 'DDM':
+            self.optimizer = torch.optim.Adam(list(self.gen.parameters()) + list(self.pred.parameters()), lr=self.autoencoder_lr, amsgrad=True)
+        else:
+            self.optimizer = torch.optim.Adam(list(self.gen.parameters()) + list(self.pred.parameters()) + list(self.dyn.parameters()), lr=self.autoencoder_lr, amsgrad=True)
+
+        self.autoencoding_losses = []
+        self.autoencoding_losses_validation = []
+        
+        if self.resume: # Need to rebuild this to resume training for 400 additional epochs if feasible... 
+            try:
+                checkpoint = torch.load(self.checkpoint_file)
+                self.gen.load_state_dict(checkpoint['gen_state_dict'])
+                self.pred.load_state_dict(checkpoint['pred_state_dict'])
+                if self.autoencoder == 'DDM':
+                    self.dyn.load_state_dict(checkpoint['dyn_state_dict'])
+                
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+                epoch_0 = checkpoint['epoch'] + 1
+                self.autoencoding_losses = checkpoint['loss']
+                self.autoencoding_losses_validation = checkpoint['validation_loss']
+                print('Starting from epoch: {0} and continuing up to epoch {1}'.format(epoch_0, self.autoencoder_num_epochs))
+            except:
+                epoch_0 = 0
+                print('Error loading file, training from default setting. epoch_0 = 0')
+        else:
+            epoch_0 = 0
+
+        for epoch in range(epoch_0, self.autoencoder_num_epochs):
+            epoch_loss = []
+            print("Experiment: autoencoder {0}: training Epoch = ".format(self.autoencoder), epoch+1, 'out of', self.autoencoder_num_epochs, 'epochs')
+
+            # Loop through all the train data using the data loader
+            for ii, (dem, ob, ac, l, t, scores, rewards, idx) in enumerate(self.train_loader):
+                # print("Batch {}".format(ii),end='')
+                dem = dem.to(device)  # 5 dimensional vector (Gender, Ventilation status, Re-admission status, Age, Weight)
+                ob = ob.to(device)    # 33 dimensional vector (time varying measures)
+                ac = ac.to(device) # actions
+                l = l.to(device)
+                t = t.to(device)
+                scores = scores.to(device)
+                idx = idx.to(device)
+                loss_pred = 0
+
+                # Cut tensors down to the batch's largest sequence length... Trying to speed things up a bit...
+                max_length = int(l.max().item())
+
+                # The following losses are for DDM and will not be modified by any other approach
+                train_loss, dec_loss, inv_loss = 0, 0, 0
+                model_loss, recon_loss, forward_loss = 0, 0, 0                    
+                    
+                # Set training mode (nn.Module.train()). It does not actually trains the model, but just sets the model to training mode.
+                self.gen.train()
+                self.pred.train()
+
+                ob = ob[:,:max_length,:]
+                dem = dem[:,:max_length,:]
+                ac = ac[:,:max_length,:]
+                scores = scores[:,:max_length,:]
+                
+                # Special case for CDE
+                # Getting loss_pred and mse_loss
+                if self.autoencoder == 'CDE':
+                    loss_pred, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = self.corr_coeff_param, device = device, coefs = self.train_coefs, idx = idx)
+                else:
+                    loss_pred, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = self.corr_coeff_param, device=device, autoencoder = self.autoencoder)   
+
+                self.optimizer.zero_grad()
+                
+                if self.autoencoder != 'DDM':
+                    loss_pred.backward()
+                    self.optimizer.step()
+                    epoch_loss.append(loss_pred.detach().cpu().numpy())                
+                else:
+                    # For DDM
+                    train_loss, dec_loss, inv_loss, model_loss, recon_loss, forward_loss, corr_loss, loss_pred = loss_pred
+                    train_loss = forward_loss + self.inv_loss_coef*inv_loss + self.dec_loss_coef*dec_loss - self.corr_coeff_param*corr_loss.sum()
+                    train_loss.backward()
+                    # Clipping gradients to prevent exploding gradients
+                    torch.nn.utils.clip_grad_norm(self.all_params, self.max_grad_norm)
+                    self.optimizer.step()
+                    epoch_loss.append(loss_pred.detach().cpu().numpy())
+                                        
+            self.autoencoding_losses.append(epoch_loss)
+            if (epoch+1)%self.saving_period == 0: # Run validation and also save checkpoint
+                
+                #Computing validation loss
+                epoch_validation_loss = []
+                with torch.no_grad():
+                    for jj, (dem, ob, ac, l, t, scores, rewards, idx) in enumerate(self.val_loader):
+
+                        dem = dem.to(device)
+                        ob = ob.to(device)
+                        ac = ac.to(device)
+                        l = l.to(device)
+                        t = t.to(device)
+                        idx = idx.to(device)
+                        scores = scores.to(device)
+                        loss_val = 0
+
+                        # Cut tensors down to the batch's largest sequence length... Trying to speed things up a bit...
+                        max_length = int(l.max().item())                        
+                        
+                        ob = ob[:,:max_length,:]
+                        dem = dem[:,:max_length,:]
+                        ac = ac[:,:max_length,:] 
+                        scores = scores[:,:max_length,:] 
+                        
+                        self.gen.eval()
+                        self.pred.eval()    
+                        
+                        if self.autoencoder == 'CDE':
+                            loss_val, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, corr_coeff_param = 0, device = device, coefs = self.val_coefs, idx = idx)
+                        else:
+                            loss_val, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = 0, device=device, autoencoder = self.autoencoder)                                                 
+                        
+                        if self.autoencoder in ['DST', 'ODERNN', 'CDE']:
+                            epoch_validation_loss.append(mse_loss)
+                        elif self.autoencoder == "DDM":
+                            epoch_validation_loss.append(loss_val[-1].detach().cpu().numpy())
+                        else:
+                            epoch_validation_loss.append(loss_val.detach().cpu().numpy())
+                    
+                        
+                self.autoencoding_losses_validation.append(epoch_validation_loss)
+
+                save_dict = {'epoch': epoch,
+                        'gen_state_dict': self.gen.state_dict(),
+                        'pred_state_dict': self.pred.state_dict(),
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                        'loss': self.autoencoding_losses,
+                        'validation_loss': self.autoencoding_losses_validation
+                        }
+                
+                if self.autoencoder == 'DDM':
+                    save_dict['dyn_state_dict'] = self.dyn.state_dict()
+                    
+                try:
+                    torch.save(save_dict, self.checkpoint_file)
+                    # torch.save(save_dict, self.checkpoint_file[:-3] + str(epoch) +'_.pt')
+                    np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
+                except Exception as e:
+                    print(e)
+
+                
+                try:
+                    np.save(self.data_folder + '/{}_validation_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses_validation))
+                except Exception as e:
+                    print(e)
+                    
+            #Final epoch checkpoint
+            try:
+                save_dict = {
+                            'epoch': self.autoencoder_num_epochs-1,
+                            'gen_state_dict': self.gen.state_dict(),
+                            'pred_state_dict': self.pred.state_dict(),
+                            'optimizer_state_dict': self.optimizer.state_dict(),
+                            'loss': self.autoencoding_losses,
+                            'validation_loss': self.autoencoding_losses_validation,
+                            }
+                if self.autoencoder == 'DDM':
+                    save_dict['dyn_state_dict'] = self.dyn.state_dict()
+                    torch.save(self.dyn.state_dict(), self.dyn_file)
+                torch.save(self.gen.state_dict(), self.gen_file)
+                torch.save(self.pred.state_dict(), self.pred_file)
+                torch.save(save_dict, self.checkpoint_file)
+                np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
+            except Exception as e:
+                    print(e)
+
+    
            
         
     def evaluate_trained_model(self):
