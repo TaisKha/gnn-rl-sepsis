@@ -40,6 +40,9 @@ def create_dummy_graph(reference_graph):
 
 def split_trajectory_into_steps(batch_full_trajectory_graphs, batch_lengths):
 
+    # Returns a list `batch`. It has a size of a minibatch.(or less if it is the last batch)
+
+
     # DO WE NEED TERMINAL STATE AT ALL? NO
 
     assert len(batch_full_trajectory_graphs) == len(batch_lengths)
@@ -67,6 +70,11 @@ def split_trajectory_into_steps(batch_full_trajectory_graphs, batch_lengths):
             graph["timestep", "has_timestep", "patient"].edge_index = full_trajectory_graph["timestep", "has_timestep", "patient"].edge_index[:, :t_idx+1]
             
             graph["timestep", "action", "timestep"].edge_index = full_trajectory_graph["timestep", "action", "timestep"].edge_index[:, :t_idx] # We do not need the action that is outgoing from the t_idx node
+
+            # print(graph["patient", "has_timestep", "timestep"].edge_index.dtype, "patient", "has_timestep", "timestep")
+            # print(graph["timestep", "has_timestep", "patient"].edge_index.dtype, "timestep", "has_timestep", "patient")
+            # print(graph["timestep", "action", "timestep"].edge_index.dtype, "timestep", "action", "timestep")
+            
 
             # Edge features
             graph["patient", "has_timestep", "timestep"].edge_attr = full_trajectory_graph["patient", "has_timestep", "timestep"].edge_attr[:t_idx+1]
@@ -223,39 +231,40 @@ def draw_graph(data, save_to_file=True, display=False):
 
 
 def create_trajectory_graph(data):
-    # Important! I will add the weight from demographics features to the timestep nodes, because it changes
+    
     assert torch.is_tensor(data[0])==True
     assert data[0].dim() == 3
     
     
-    demography, observations, actions, l, t, scores, rewards, idx = data
-    minibatch_size = len(observations)
+    demography, observations, actions, l = data
+    this_batch_size = len(observations)
 
+    # Commented out because already done, should be a separate function
+    # # Remove the last column from dem
+    # demography_new = demography[:, :, :-1]  # Shape: (128, 20, 4)
     
-    # Remove the last column from dem
-    demography_new = demography[:, :, :-1]  # Shape: (128, 20, 4)
-    
-    # Extract the last column from dem
-    demography_last_column = demography[:, :, -1:]  # Shape: (128, 20, 1)
+    # # Extract the last column from dem
+    # demography_last_column = demography[:, :, -1:]  # Shape: (128, 20, 1)
 
-    # Append the last column to obs
-    observations_new = torch.cat([observations, demography_last_column], dim=2)  # Shape: (128, 20, 33+1=34)
+    # # Append the last column to obs
+    # observations_new = torch.cat([observations, demography_last_column], dim=2)  # Shape: (128, 20, 33+1=34)
     
     batch_trajectory_graphs = []
     batch_lengths = []
 
     
     
-    for traj_i in range(minibatch_size): 
+    for traj_i in range(this_batch_size): 
 
         # Initialize a new graph
         graph = HeteroData()
         n_timesteps = l[traj_i].item()
+        # sprint(n_timesteps)
         assert isinstance(n_timesteps, int)
         
         
-        curr_demography = demography_new[traj_i][0] # We take only the first element, because demography info does not chage over time
-        current_observations = observations_new[traj_i]
+        curr_demography = demography[traj_i][0] # We take only the first element, because demography info does not chage over time
+        current_observations = observations[traj_i]
         current_actions = actions[traj_i]
 
         assert current_observations.dim() == 2
@@ -288,21 +297,33 @@ def create_trajectory_graph(data):
 
         graph["patient", "has_timestep", "timestep"].edge_index = patient_to_timestep_edge_index
         graph["timestep", "has_timestep", "patient"].edge_index = timestep_to_patient_edge_index
+
+        print(graph["patient", "has_timestep", "timestep"].edge_index.dtype, "patient", "has_timestep", "timestep")
+        print(graph["timestep", "has_timestep", "patient"].edge_index.dtype, "timestep", "has_timestep", "patient")
+        
         
 
         # Add edges between timesteps. 
-        timestep_to_timestep_edge_index = torch.tensor([
-            list(range(n_timesteps-1)),  # source timestep nodes
-            list(range(1, n_timesteps))  # target timestep nodes
-        ])
-        
-        graph["timestep", "action", "timestep"].edge_index = timestep_to_timestep_edge_index
+        if n_timesteps > 1:
+            timestep_to_timestep_edge_index = torch.tensor([
+                list(range(n_timesteps-1)),  # source timestep nodes
+                list(range(1, n_timesteps))  # target timestep nodes
+            ])
+            # if timestep_to_timestep_edge_index.dtype == torch.float32:
+                # print("n_timesteps=",n_timesteps)
+                # print("n_timesteps=",n_timesteps)
+                # print(timestep_to_timestep_edge_index)
+            
+            graph["timestep", "action", "timestep"].edge_index = timestep_to_timestep_edge_index
+            # print(graph["timestep", "action", "timestep"].edge_index.dtype, "timestep", "action", "timestep")
         
         # Connect last timestep node with the terminal
         graph["timestep", "terminates_at", "terminal"].edge_index = torch.tensor([
             [n_timesteps-1], # Source - the very last timestep node
             [0] # Target - terminal node, it is only one, therefore index is 0
         ])
+        # print(graph["timestep", "terminates_at", "terminal"].edge_index.dtype, "timestep", "terminates_at", "terminal")
+        
 
         # --Adding values to edges--
 
