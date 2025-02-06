@@ -68,12 +68,11 @@ def split_trajectory_into_steps(batch_full_trajectory_graphs, batch_lengths):
             graph["patient", "has_timestep", "timestep"].edge_index = full_trajectory_graph["patient", "has_timestep", "timestep"].edge_index[:, :t_idx+1]
             
             graph["timestep", "has_timestep", "patient"].edge_index = full_trajectory_graph["timestep", "has_timestep", "patient"].edge_index[:, :t_idx+1]
-            
-            graph["timestep", "action", "timestep"].edge_index = full_trajectory_graph["timestep", "action", "timestep"].edge_index[:, :t_idx] # We do not need the action that is outgoing from the t_idx node
 
-            # print(graph["patient", "has_timestep", "timestep"].edge_index.dtype, "patient", "has_timestep", "timestep")
-            # print(graph["timestep", "has_timestep", "patient"].edge_index.dtype, "timestep", "has_timestep", "patient")
-            # print(graph["timestep", "action", "timestep"].edge_index.dtype, "timestep", "action", "timestep")
+            # If it is the very first step, there is no actions edges yet
+            if t_idx > 0:
+                graph["timestep", "action", "timestep"].edge_index = full_trajectory_graph["timestep", "action", "timestep"].edge_index[:, :t_idx] # We do not need the action that is outgoing from the t_idx node
+
             
 
             # Edge features
@@ -81,10 +80,10 @@ def split_trajectory_into_steps(batch_full_trajectory_graphs, batch_lengths):
 
             graph["timestep", "has_timestep", "patient"].edge_attr = full_trajectory_graph["timestep", "has_timestep", "patient"].edge_attr[:t_idx+1]
             
-            graph["timestep", "action", "timestep"].edge_attr = full_trajectory_graph["timestep", "action", "timestep"].edge_attr[:t_idx]
+            if t_idx > 0:
+                graph["timestep", "action", "timestep"].edge_attr = full_trajectory_graph["timestep", "action", "timestep"].edge_attr[:t_idx]
 
             
-            # print(graph)
             # draw_graph(graph, save_to_file=False, display=True)
             
 
@@ -238,16 +237,6 @@ def create_trajectory_graph(data):
     
     demography, observations, actions, l = data
     this_batch_size = len(observations)
-
-    # Commented out because already done, should be a separate function
-    # # Remove the last column from dem
-    # demography_new = demography[:, :, :-1]  # Shape: (128, 20, 4)
-    
-    # # Extract the last column from dem
-    # demography_last_column = demography[:, :, -1:]  # Shape: (128, 20, 1)
-
-    # # Append the last column to obs
-    # observations_new = torch.cat([observations, demography_last_column], dim=2)  # Shape: (128, 20, 33+1=34)
     
     batch_trajectory_graphs = []
     batch_lengths = []
@@ -297,11 +286,7 @@ def create_trajectory_graph(data):
 
         graph["patient", "has_timestep", "timestep"].edge_index = patient_to_timestep_edge_index
         graph["timestep", "has_timestep", "patient"].edge_index = timestep_to_patient_edge_index
-
-        print(graph["patient", "has_timestep", "timestep"].edge_index.dtype, "patient", "has_timestep", "timestep")
-        print(graph["timestep", "has_timestep", "patient"].edge_index.dtype, "timestep", "has_timestep", "patient")
-        
-        
+                
 
         # Add edges between timesteps. 
         if n_timesteps > 1:
@@ -309,10 +294,6 @@ def create_trajectory_graph(data):
                 list(range(n_timesteps-1)),  # source timestep nodes
                 list(range(1, n_timesteps))  # target timestep nodes
             ])
-            # if timestep_to_timestep_edge_index.dtype == torch.float32:
-                # print("n_timesteps=",n_timesteps)
-                # print("n_timesteps=",n_timesteps)
-                # print(timestep_to_timestep_edge_index)
             
             graph["timestep", "action", "timestep"].edge_index = timestep_to_timestep_edge_index
             # print(graph["timestep", "action", "timestep"].edge_index.dtype, "timestep", "action", "timestep")
@@ -322,7 +303,6 @@ def create_trajectory_graph(data):
             [n_timesteps-1], # Source - the very last timestep node
             [0] # Target - terminal node, it is only one, therefore index is 0
         ])
-        # print(graph["timestep", "terminates_at", "terminal"].edge_index.dtype, "timestep", "terminates_at", "terminal")
         
 
         # --Adding values to edges--
@@ -339,7 +319,6 @@ def create_trajectory_graph(data):
         # Add property(action) to the edges between timesteps
         graph["timestep", "action", "timestep"].edge_attr = current_actions[:-1]
         
-        
         # draw_graph(graph, save_to_file=False, display=False)
 
         batch_trajectory_graphs.append(graph)
@@ -348,60 +327,3 @@ def create_trajectory_graph(data):
     
         
     return batch_trajectory_graphs, batch_lengths
-
-
-
-# train_demog, train_states, train_interventions, train_lengths, train_times, acuities, rewards = torch.load(train_data_file)
-# train_idx = torch.arange(train_demog.shape[0])
-# train_dataset = TensorDataset(train_demog, train_states, train_interventions,train_lengths,train_times, acuities, rewards, train_idx)
-# train_loader = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=True)
-
-# device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-# for ii, (dem, ob, ac, l, t, scores, rewards, idx) in enumerate(train_loader):
-#                 if ii > 0:
-#                     break
-#                 # print("Batch {}".format(ii),end='')
-    
-#                 # we've got 128 different trajectories of different length
-    
-#                 dem = dem.to(device)  # 5 dimensional vector (Gender, Ventilation status, Re-admission status, Age, Weight)
-#                 ob = ob.to(device)    # 33 dimensional vector (time varying measures)
-#                 ac = ac.to(device) # actions
-#                 l = l.to(device)
-#                 t = t.to(device)
-#                 scores = scores.to(device)
-#                 idx = idx.to(device)
-#                 loss_pred = 0
-
-#                 # Cut tensors down to the batch's largest sequence length... Trying to speed things up a bit...
-#                 max_length = int(l.max().item())
-#                 min_length = int(l.min().item())
-#                 # print(f"{max_length=}")
-#                 # print(f"{min_length=}")
-#                 # # The following losses are for DDM and will not be modified by any other approach
-#                 # train_loss, dec_loss, inv_loss = 0, 0, 0
-#                 # model_loss, recon_loss, forward_loss = 0, 0, 0                    
-                    
-#                 # # Set training mode (nn.Module.train()). It does not actually trains the model, but just sets the model to training mode.
-#                 # self.gen.train()
-#                 # self.pred.train()
-                
-#                 ob = ob[:,:max_length,:]
-#                 dem = dem[:,:max_length,:]
-#                 ac = ac[:,:max_length,:]
-#                 scores = scores[:,:max_length,:]
-
-#                 data = (dem, ob, ac, l, t, scores, rewards, idx)
-#                 batch_full_trajectory_graphs, batch_lengths = create_trajectory_graph(data)
-#                 final_batch = split_trajectory_into_steps(batch_full_trajectory_graphs, batch_lengths)
-    
-#                 # print(dem[0])
-#                 # print(l[0])
-#                 # print(ac[0][:-1].shape)
-#                 # print(ob.shape)
-#                 # print(ac.shape)
-                
-                
-
-#                 # trajectory_graph = create_trajectory_graph(dem, ob, ac, l, t, scores, rewards, idx)
