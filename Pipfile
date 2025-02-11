@@ -26,6 +26,10 @@ pillow = ">=8.1.1"
 pyyaml = ">=5.4"
 tqdm = ">=4.32.1"
 torchdiffeq = ">=0.1.1"
+prettytable = "*"
+gensim = "*"
+torch-sparse = "*"
+torch-scatter = "*"
 
 [dev-packages]
 
