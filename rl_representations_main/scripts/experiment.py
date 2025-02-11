@@ -26,6 +26,7 @@ Notes:
  - The code for the AIS approach and general framework we build from was developed by Jayakumar Subramanian
 
 '''
+
 import numpy as np
 # import pandas as pd
 # import operator
@@ -35,6 +36,7 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from itertools import chain
+import wandb
 
 # import signatory
 
@@ -48,18 +50,20 @@ import os
 from dBCQ_utils import *
 
 # from models import AE, AIS, CDE, DST, DDM, RNN, ODERNN
-from models import RNN
+from models import RNN, GNN
+from models.graph_utils import create_trajectory_graph, split_trajectory_into_steps
 # from models import HTGNN
 from models.common import get_dynamics_losses, pearson_correlation, mask_from_lengths
 
 class Experiment(object): 
     def __init__(self, domain, train_data_file, validation_data_file, test_data_file, minibatch_size, device,
                  behav_policy_file_wDemo, behav_policy_file,
-                context_input=False, context_dim=0, drop_smaller_than_minibatch=True, 
+                context_input=True, context_dim=0, drop_smaller_than_minibatch=True, 
                 folder_name='/Name', autoencoder_saving_period=20, resume=False, sided_Q='negative',  
                 autoencoder_num_epochs=50, autoencoder_lr=0.001, autoencoder='AIS', hidden_size=16, ais_gen_model=1, 
                 ais_pred_model=1, embedding_dim=4, state_dim=42, num_actions=25, corr_coeff_param=10, dst_hypers = {},
-                 cde_hypers = {}, odernn_hypers = {},  bc_num_nodes = 64, **kwargs):
+                 cde_hypers = {}, odernn_hypers = {},  bc_num_nodes = 64, state_dim_gnn = 0, inject_action_gnn = False,
+                encoder_hidden_size = 128, encoder_num_layers = 2, **kwargs):
         '''
         We assume discrete actions and scalar rewards!
         '''
@@ -70,18 +74,22 @@ class Experiment(object):
         self.validation_data_file = validation_data_file
         self.test_data_file = test_data_file
         self.minibatch_size = minibatch_size
-        self.drop_smaller_than_minibatch = drop_smaller_than_minibatch
+        # self.drop_smaller_than_minibatch = drop_smaller_than_minibatch
         self.autoencoder_num_epochs = autoencoder_num_epochs 
         self.autoencoder = autoencoder
         self.autoencoder_lr = autoencoder_lr
         self.saving_period = autoencoder_saving_period
         self.resume = resume
-        self.sided_Q = sided_Q
+        # self.sided_Q = sided_Q
         self.num_actions = num_actions
         self.state_dim = state_dim
         self.corr_coeff_param = corr_coeff_param
+        self.state_dim_gnn = state_dim_gnn
+        self.inject_action_gnn = inject_action_gnn
 
-        print("DEBUGGING: bc_num_nodes = ", bc_num_nodes)
+        self.encoder_hidden_size = encoder_hidden_size
+        self.encoder_num_layers = encoder_num_layers
+
         self.bc_num_nodes = bc_num_nodes
 
         self.context_input = context_input # Check to see if we'll one-hot encode the categorical contextual input
@@ -92,6 +100,18 @@ class Experiment(object):
             self.input_dim = self.state_dim + self.context_dim + self.num_actions
         else:
             self.input_dim = self.state_dim + self.num_actions
+
+        wandb.init(project='sepsis-data-autoencoder', config={
+            'autoencoder': self.autoencoder,
+            'autoencoder_num_epochs': self.autoencoder_num_epochs,
+            'learning_rate': self.autoencoder_lr,
+            'batch_size': self.minibatch_size, # 64, 128
+            'inject_action': self.inject_action_gnn, # False, True
+            'encoder_hidden_size': self.encoder_hidden_size, # 64, 128
+            'encoder_num_layers': self.encoder_num_layers, # 2, 3
+            'hidden_size': self.hidden_size, # 64, 128
+        })
+
         
         self.autoencoder_lower = self.autoencoder.lower()
         self.data_folder = folder_name + f'/{self.autoencoder_lower}_data'
@@ -164,6 +184,12 @@ class Experiment(object):
             self.pred = self.container.make_decoder(self.hidden_size, self.state_dim, 
                                        self.odernn_hypers['decoder_n_layers'], 
                                    self.odernn_hypers['decoder_n_units'])
+            
+        elif self.autoencoder == 'GNN':
+            self.container = GNN.ModelContainer(device)
+            
+            self.gen = self.container.make_encoder(hidden_size=self.hidden_size, encoder_hidden_size=self.encoder_hidden_size, encoder_num_layers=self.encoder_num_layers)
+            self.pred = self.container.make_decoder(self.hidden_size, self.state_dim_gnn, self.num_actions, inject_action=self.inject_action_gnn)
         else:
             raise NotImplementedError
 
@@ -206,6 +232,7 @@ class Experiment(object):
             self.test_coefs = load_cde_data('test', self.test_dataset, self.cde_hypers['coefs_folder'],
                                             self.context_input, device)            
             
+        
     
     def load_model_from_checkpoint(self, checkpoint_file_path):
         checkpoint = torch.load(checkpoint_file_path)
@@ -287,6 +314,8 @@ class Experiment(object):
                     loss_pred, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = self.corr_coeff_param, device=device, autoencoder = self.autoencoder)   
 
                 self.optimizer.zero_grad()
+
+                
                 
                 if self.autoencoder != 'DDM':
                     loss_pred.backward()
@@ -301,6 +330,13 @@ class Experiment(object):
                     torch.nn.utils.clip_grad_norm(self.all_params, self.max_grad_norm)
                     self.optimizer.step()
                     epoch_loss.append(loss_pred.detach().cpu().numpy())
+                
+            train_num_batches = len(self.train_loader)    
+            train_epoch_loss_sum = np.sum(epoch_loss)
+            train_mean_batch_loss = train_epoch_loss_sum / train_num_batches
+            epoch_number = epoch + 1
+            
+            wandb.log({"epoch": epoch_number, "train_loss": train_mean_batch_loss})
                                         
             self.autoencoding_losses.append(epoch_loss)
             if (epoch+1)%self.saving_period == 0: # Run validation and also save checkpoint
@@ -341,8 +377,14 @@ class Experiment(object):
                             epoch_validation_loss.append(loss_val[-1].detach().cpu().numpy())
                         else:
                             epoch_validation_loss.append(loss_val.detach().cpu().numpy())
-                    
+                            
                         
+                    
+                val_num_batches = len(self.val_loader)    
+                val_epoch_loss_sum = np.sum(epoch_validation_loss)
+                val_mean_batch_loss = val_epoch_loss_sum / val_num_batches
+                epoch_number = epoch + 1
+                wandb.log({"epoch": epoch_number, "val_loss": val_mean_batch_loss})        
                 self.autoencoding_losses_validation.append(epoch_validation_loss)
 
                 save_dict = {'epoch': epoch,
@@ -388,184 +430,12 @@ class Experiment(object):
                 np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
             except Exception as e:
                     print(e)
-
-    def gnn_training(self):
-        print('Experiment: training autoencoder')
-        device = self.device
-        
-        if self.autoencoder != 'DDM':
-            self.optimizer = torch.optim.Adam(list(self.gen.parameters()) + list(self.pred.parameters()), lr=self.autoencoder_lr, amsgrad=True)
-        else:
-            self.optimizer = torch.optim.Adam(list(self.gen.parameters()) + list(self.pred.parameters()) + list(self.dyn.parameters()), lr=self.autoencoder_lr, amsgrad=True)
-
-        self.autoencoding_losses = []
-        self.autoencoding_losses_validation = []
-        
-        if self.resume: # Need to rebuild this to resume training for 400 additional epochs if feasible... 
-            try:
-                checkpoint = torch.load(self.checkpoint_file)
-                self.gen.load_state_dict(checkpoint['gen_state_dict'])
-                self.pred.load_state_dict(checkpoint['pred_state_dict'])
-                if self.autoencoder == 'DDM':
-                    self.dyn.load_state_dict(checkpoint['dyn_state_dict'])
-                
-                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-                epoch_0 = checkpoint['epoch'] + 1
-                self.autoencoding_losses = checkpoint['loss']
-                self.autoencoding_losses_validation = checkpoint['validation_loss']
-                print('Starting from epoch: {0} and continuing up to epoch {1}'.format(epoch_0, self.autoencoder_num_epochs))
-            except:
-                epoch_0 = 0
-                print('Error loading file, training from default setting. epoch_0 = 0')
-        else:
-            epoch_0 = 0
-
-        for epoch in range(epoch_0, self.autoencoder_num_epochs):
-            epoch_loss = []
-            print("Experiment: autoencoder {0}: training Epoch = ".format(self.autoencoder), epoch+1, 'out of', self.autoencoder_num_epochs, 'epochs')
-
-            # Loop through all the train data using the data loader
-            for ii, (dem, ob, ac, l, t, scores, rewards, idx) in enumerate(self.train_loader):
-                # print("Batch {}".format(ii),end='')
-                dem = dem.to(device)  # 5 dimensional vector (Gender, Ventilation status, Re-admission status, Age, Weight)
-                ob = ob.to(device)    # 33 dimensional vector (time varying measures)
-                ac = ac.to(device) # actions
-                l = l.to(device)
-                t = t.to(device)
-                scores = scores.to(device)
-                idx = idx.to(device)
-                loss_pred = 0
-
-                # Cut tensors down to the batch's largest sequence length... Trying to speed things up a bit...
-                max_length = int(l.max().item())
-
-                # The following losses are for DDM and will not be modified by any other approach
-                train_loss, dec_loss, inv_loss = 0, 0, 0
-                model_loss, recon_loss, forward_loss = 0, 0, 0                    
-                    
-                # Set training mode (nn.Module.train()). It does not actually trains the model, but just sets the model to training mode.
-                self.gen.train()
-                self.pred.train()
-
-                ob = ob[:,:max_length,:]
-                dem = dem[:,:max_length,:]
-                ac = ac[:,:max_length,:]
-                scores = scores[:,:max_length,:]
-                
-                # Special case for CDE
-                # Getting loss_pred and mse_loss
-                if self.autoencoder == 'CDE':
-                    loss_pred, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = self.corr_coeff_param, device = device, coefs = self.train_coefs, idx = idx)
-                else:
-                    loss_pred, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = self.corr_coeff_param, device=device, autoencoder = self.autoencoder)   
-
-                self.optimizer.zero_grad()
-                
-                if self.autoencoder != 'DDM':
-                    loss_pred.backward()
-                    self.optimizer.step()
-                    epoch_loss.append(loss_pred.detach().cpu().numpy())                
-                else:
-                    # For DDM
-                    train_loss, dec_loss, inv_loss, model_loss, recon_loss, forward_loss, corr_loss, loss_pred = loss_pred
-                    train_loss = forward_loss + self.inv_loss_coef*inv_loss + self.dec_loss_coef*dec_loss - self.corr_coeff_param*corr_loss.sum()
-                    train_loss.backward()
-                    # Clipping gradients to prevent exploding gradients
-                    torch.nn.utils.clip_grad_norm(self.all_params, self.max_grad_norm)
-                    self.optimizer.step()
-                    epoch_loss.append(loss_pred.detach().cpu().numpy())
-                                        
-            self.autoencoding_losses.append(epoch_loss)
-            if (epoch+1)%self.saving_period == 0: # Run validation and also save checkpoint
-                
-                #Computing validation loss
-                epoch_validation_loss = []
-                with torch.no_grad():
-                    for jj, (dem, ob, ac, l, t, scores, rewards, idx) in enumerate(self.val_loader):
-
-                        dem = dem.to(device)
-                        ob = ob.to(device)
-                        ac = ac.to(device)
-                        l = l.to(device)
-                        t = t.to(device)
-                        idx = idx.to(device)
-                        scores = scores.to(device)
-                        loss_val = 0
-
-                        # Cut tensors down to the batch's largest sequence length... Trying to speed things up a bit...
-                        max_length = int(l.max().item())                        
-                        
-                        ob = ob[:,:max_length,:]
-                        dem = dem[:,:max_length,:]
-                        ac = ac[:,:max_length,:] 
-                        scores = scores[:,:max_length,:] 
-                        
-                        self.gen.eval()
-                        self.pred.eval()    
-                        
-                        if self.autoencoder == 'CDE':
-                            loss_val, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, corr_coeff_param = 0, device = device, coefs = self.val_coefs, idx = idx)
-                        else:
-                            loss_val, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = 0, device=device, autoencoder = self.autoencoder)                                                 
-                        
-                        if self.autoencoder in ['DST', 'ODERNN', 'CDE']:
-                            epoch_validation_loss.append(mse_loss)
-                        elif self.autoencoder == "DDM":
-                            epoch_validation_loss.append(loss_val[-1].detach().cpu().numpy())
-                        else:
-                            epoch_validation_loss.append(loss_val.detach().cpu().numpy())
-                    
-                        
-                self.autoencoding_losses_validation.append(epoch_validation_loss)
-
-                save_dict = {'epoch': epoch,
-                        'gen_state_dict': self.gen.state_dict(),
-                        'pred_state_dict': self.pred.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'loss': self.autoencoding_losses,
-                        'validation_loss': self.autoencoding_losses_validation
-                        }
-                
-                if self.autoencoder == 'DDM':
-                    save_dict['dyn_state_dict'] = self.dyn.state_dict()
-                    
-                try:
-                    torch.save(save_dict, self.checkpoint_file)
-                    # torch.save(save_dict, self.checkpoint_file[:-3] + str(epoch) +'_.pt')
-                    np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
-                except Exception as e:
-                    print(e)
-
-                
-                try:
-                    np.save(self.data_folder + '/{}_validation_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses_validation))
-                except Exception as e:
-                    print(e)
-                    
-            #Final epoch checkpoint
-            try:
-                save_dict = {
-                            'epoch': self.autoencoder_num_epochs-1,
-                            'gen_state_dict': self.gen.state_dict(),
-                            'pred_state_dict': self.pred.state_dict(),
-                            'optimizer_state_dict': self.optimizer.state_dict(),
-                            'loss': self.autoencoding_losses,
-                            'validation_loss': self.autoencoding_losses_validation,
-                            }
-                if self.autoencoder == 'DDM':
-                    save_dict['dyn_state_dict'] = self.dyn.state_dict()
-                    torch.save(self.dyn.state_dict(), self.dyn_file)
-                torch.save(self.gen.state_dict(), self.gen_file)
-                torch.save(self.pred.state_dict(), self.pred_file)
-                torch.save(save_dict, self.checkpoint_file)
-                np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
-            except Exception as e:
-                    print(e)
-
     
            
-        
+    # TODO later -> split this fuction into 3 functions, vause it is too huge: 
+    # 1. encode representations, using trained model and populate replay buffer
+    # 2. evaluate prediction accuracy of the decoder on TEST data. Before, we did it only on evaluation data.
+    # 3. evaluate correlation between the learned representations and the acuity scores
     def evaluate_trained_model(self):
         '''After training, this method can be called to use the trained autoencoder to embed all the data in the representation space.
         We encode all data subsets (train, validation and test) separately and save them off as independent tuples. We then will
@@ -669,16 +539,73 @@ class Experiment(object):
                         i_coefs = (self.train_coefs, self.val_coefs, self.test_coefs)[i_set]                         
                         _, pred_error, representations = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = 0, device=self.device, coefs = i_coefs, idx = idx) 
                         representations = representations[:, :-1, :].detach()
+                    elif self.autoencoder == 'GNN':
+                        # For GNN we need to rearrange one dem feature into obs
+                        gnn_demography_new = dem[:, :, :-1]  # Shape: (128, 20, 4)
+                        # Extract the last column from dem
+                        gnn_demography_last_column = dem[:, :, -1:]  # Shape: (128, 20, 1)
+                        # Append the last column to obs
+                        gnn_obs_new = torch.cat([ob, gnn_demography_last_column], dim=2)  # Shape: (128, 20, 33+1=34)
+
+                        gnn_obs = gnn_obs_new
+                        gnn_dem = gnn_demography_new
+                        
+                        gnn_cur_obs, gnn_next_obs = gnn_obs[:,:-1,:], gnn_obs[:,1:,:]
+                        gnn_cur_dem = gnn_dem[:,:-1,:] # (128, 19, 4)
+                        
+                        # And we need to subtract 1 from every length, because we cut one element from every trajectory in the minibatch
+                        gnn_curr_l = l - 1
+                        gnn_cur_actions = cur_actions
+                        
+                        mask = (gnn_cur_obs ==0).all(dim=2) # Compute mask for extra appended rows of observations (all zeros along dim 2)
+                
+                        sequence_size = gnn_cur_obs.shape[1] # number of steps in a trajectory
+                
+
+                        data = (gnn_cur_dem, gnn_cur_obs, gnn_cur_actions, gnn_curr_l)
+                        batch_full_trajectory_graphs, batch_lengths = create_trajectory_graph(data)
+                        graphs_batch = split_trajectory_into_steps(batch_full_trajectory_graphs, batch_lengths)
+
+                        # Optionally, move data to device
+                        # This requires iterating and moving each HeteroData to the device
+                        for i in range(len(graphs_batch)):
+                            for j in range(sequence_size):
+                                for key in graphs_batch[i][j].x_dict.keys():
+                                    graphs_batch[i][j].x_dict[key] = graphs_batch[i][j].x_dict[key].to(self.device)
+                                for key in graphs_batch[i][j].edge_index_dict.keys():
+                                    graphs_batch[i][j].edge_index_dict[key] = graphs_batch[i][j].edge_index_dict[key].to(self.device)
+                        
+                        # Encode the batch
+                        representations = self.gen(graphs_batch)  # Shape: (batch_size, sequence_size, 128)
+
+                        if self.inject_action_gnn:
+                            pred_obs = self.pred(torch.cat((representations, cur_actions), dim=-1))
+                        else: 
+                            pred_obs = self.pred(representations)
+
+
+                        assert pred_obs.shape == gnn_next_obs.shape
+
+                        
+                        temp_loss = -torch.distributions.MultivariateNormal(pred_obs, torch.eye(pred_obs.shape[-1]).to(self.device)).log_prob(gnn_next_obs)
+                        mse_loss = sum(temp_loss[~mask])
+                        pred_error = mse_loss
+
+                        
+
                                                 
 
                     if i_set == 2:  # If we're evaluating the models on the test set...
-                        # Compute the Pearson correlation of the learned representations and the acuity scores
-                        corr = torch.zeros((cur_obs.shape[0], representations.shape[-1], cur_scores.shape[-1]))
-                        for i in range(cur_obs.shape[0]):
-                            corr[i] = pearson_correlation(representations[i][~mask[i]], cur_scores[i][~mask[i]], device=self.device)
-                
-                        # Concatenate this batch's correlations with the larger tensor
-                        correlations = torch.cat((correlations, corr), dim=0)
+
+                        if self.autoencoder != 'GNN':
+                        
+                            # Compute the Pearson correlation of the learned representations and the acuity scores
+                            corr = torch.zeros((cur_obs.shape[0], representations.shape[-1], cur_scores.shape[-1]))
+                            for i in range(cur_obs.shape[0]):
+                                corr[i] = pearson_correlation(representations[i][~mask[i]], cur_scores[i][~mask[i]], device=self.device)
+                    
+                            # Concatenate this batch's correlations with the larger tensor
+                            correlations = torch.cat((correlations, corr), dim=0)
 
                         # Concatenate the batch's representations with the larger tensor
                         test_representations = torch.cat((test_representations, representations.cpu()), dim=0)
@@ -688,26 +615,26 @@ class Experiment(object):
                             errors.append(pred_error.item())
                         else:
                             errors.append(pred_error)
-
-                    # Remove values with the computed mask and add data to the experience replay buffer
-                    cur_rep = torch.cat((representations[:,:-1, :], torch.zeros((cur_obs.shape[0], 1, self.hidden_size)).to(self.device)), dim=1)
-                    next_rep = torch.cat((representations[:,1:, :], torch.zeros((cur_obs.shape[0], 1, self.hidden_size)).to(self.device)), dim=1)
-                    cur_rep = cur_rep[~mask].cpu()
-                    next_rep = next_rep[~mask].cpu()
-                    cur_actions = cur_actions[~mask].cpu()
-                    cur_rewards = cur_rewards[~mask].cpu()
-                    cur_obs = cur_obs[~mask].cpu()  # Need to keep track of the actual observations that were made to form the corresponding representations (for downstream WIS)
-                    next_obs = next_obs[~mask].cpu()
-                    cur_dem = cur_dem[~mask].cpu()
-                    next_dem = next_dem[~mask].cpu()
-                    
-                    # Loop over all transitions and add them to the replay buffer
-                    for i_trans in range(cur_rep.shape[0]):
-                        done = cur_rewards[i_trans] != 0
-                        if self.context_input:
-                            self.replay_buffer.add(cur_rep[i_trans].numpy(), cur_actions[i_trans].argmax().item(), next_rep[i_trans].numpy(), cur_rewards[i_trans].item(), done.item(), torch.cat((cur_obs[i_trans],cur_dem[i_trans]),dim=-1).numpy(), torch.cat((next_obs[i_trans], next_dem[i_trans]), dim=-1).numpy())
-                        else:
-                            self.replay_buffer.add(cur_rep[i_trans].numpy(), cur_actions[i_trans].argmax().item(), next_rep[i_trans].numpy(), cur_rewards[i_trans].item(), done.item(), cur_obs[i_trans].numpy(), next_obs[i_trans].numpy())
+                    else:
+                        # Remove values with the computed mask and add data to the experience replay buffer
+                        cur_rep = torch.cat((representations[:,:-1, :], torch.zeros((cur_obs.shape[0], 1, self.hidden_size)).to(self.device)), dim=1)
+                        next_rep = torch.cat((representations[:,1:, :], torch.zeros((cur_obs.shape[0], 1, self.hidden_size)).to(self.device)), dim=1)
+                        cur_rep = cur_rep[~mask].cpu()
+                        next_rep = next_rep[~mask].cpu()
+                        cur_actions = cur_actions[~mask].cpu()
+                        cur_rewards = cur_rewards[~mask].cpu()
+                        cur_obs = cur_obs[~mask].cpu()  # Need to keep track of the actual observations that were made to form the corresponding representations (for downstream WIS)
+                        next_obs = next_obs[~mask].cpu()
+                        cur_dem = cur_dem[~mask].cpu()
+                        next_dem = next_dem[~mask].cpu()
+                        
+                        # Loop over all transitions and add them to the replay buffer
+                        for i_trans in range(cur_rep.shape[0]):
+                            done = cur_rewards[i_trans] != 0
+                            if self.context_input:
+                                self.replay_buffer.add(cur_rep[i_trans].numpy(), cur_actions[i_trans].argmax().item(), next_rep[i_trans].numpy(), cur_rewards[i_trans].item(), done.item(), torch.cat((cur_obs[i_trans],cur_dem[i_trans]),dim=-1).numpy(), torch.cat((next_obs[i_trans], next_dem[i_trans]), dim=-1).numpy())
+                            else:
+                                self.replay_buffer.add(cur_rep[i_trans].numpy(), cur_actions[i_trans].argmax().item(), next_rep[i_trans].numpy(), cur_rewards[i_trans].item(), done.item(), cur_obs[i_trans].numpy(), next_obs[i_trans].numpy())
 
             ## SAVE OFF DATA
             # --------------
@@ -725,6 +652,7 @@ class Experiment(object):
         # Initialize parameters for policy learning
         params = {
             "eval_freq": 500,
+            # "eval_freq": 1,
             "discount": 0.99,
             "buffer_size": 350000,
             "batch_size": self.minibatch_size,
@@ -737,6 +665,7 @@ class Experiment(object):
             "target_update_freq": 1,
             "tau": 0.01,
             "max_timesteps": 5e5,
+            # "max_timesteps": 1,
             "BCQ_threshold": 0.3,
             "buffer_dir": self.buffer_save_file,
             "policy_file": self.policy_save_file+f'_l{pol_learning_rate}.pt',
@@ -746,12 +675,12 @@ class Experiment(object):
         # Initialize a dataloader for policy evaluation (will need representations, observations, demographics, rewards and actions from the test dataset)
         test_representations = torch.load(self.test_representations_file)  # Load the test representations
         pol_eval_dataset = TensorDataset(test_representations, self.test_states, self.test_interventions, self.test_demog, self.test_rewards)
-        print("Debugging experiment.train_dBCQ_policy") 
-        print(f"{test_representations.shape=}") #torch.Size([2775, 19, 64])
-        print(f"{self.test_states.shape=}") #torch.Size([2775, 21, 33]) -> they are raw, not cut
-        print(f"{self.test_interventions.shape=}")# torch.Size([2775, 20, 25]) ->why here 20, and not 21? 
-        print(f"{self.test_demog.shape=}") #torch.Size([2775, 21, 5]) as observations
-        print(f"{self.test_rewards.shape=}") #torch.Size([2775, 21]) as observations
+        # print("Debugging experiment.train_dBCQ_policy") 
+        # print(f"{test_representations.shape=}") #torch.Size([2775, 19, 64])
+        # print(f"{self.test_states.shape=}") #torch.Size([2775, 21, 33]) -> they are raw, not cut
+        # print(f"{self.test_interventions.shape=}")# torch.Size([2775, 20, 25]) ->why here 20, and not 21? 
+        # print(f"{self.test_demog.shape=}") #torch.Size([2775, 21, 5]) as observations
+        # print(f"{self.test_rewards.shape=}") #torch.Size([2775, 21]) as observations
 
         pol_eval_dataloader = DataLoader(pol_eval_dataset, batch_size=self.minibatch_size, shuffle=False)
 
@@ -772,178 +701,4 @@ class Experiment(object):
         train_dBCQ(replay_buffer, self.num_actions, self.hidden_size, self.device, params, behav_pol, pol_eval_dataloader, self.context_input)
 
 
-    def train_autoencoder_gnn(self):
-        print('Experiment: training autoencoder GNN')
-        device = self.device
-        
-        if self.autoencoder != 'DDM':
-            self.optimizer = torch.optim.Adam(list(self.gen.parameters()) + list(self.pred.parameters()), lr=self.autoencoder_lr, amsgrad=True)
-        else:
-            self.optimizer = torch.optim.Adam(list(self.gen.parameters()) + list(self.pred.parameters()) + list(self.dyn.parameters()), lr=self.autoencoder_lr, amsgrad=True)
-
-        self.autoencoding_losses = []
-        self.autoencoding_losses_validation = []
-        
-        if self.resume: # Need to rebuild this to resume training for 400 additional epochs if feasible... 
-            try:
-                checkpoint = torch.load(self.checkpoint_file)
-                self.gen.load_state_dict(checkpoint['gen_state_dict'])
-                self.pred.load_state_dict(checkpoint['pred_state_dict'])
-                if self.autoencoder == 'DDM':
-                    self.dyn.load_state_dict(checkpoint['dyn_state_dict'])
-                
-                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-                epoch_0 = checkpoint['epoch'] + 1
-                self.autoencoding_losses = checkpoint['loss']
-                self.autoencoding_losses_validation = checkpoint['validation_loss']
-                print('Starting from epoch: {0} and continuing up to epoch {1}'.format(epoch_0, self.autoencoder_num_epochs))
-            except:
-                epoch_0 = 0
-                print('Error loading file, training from default setting. epoch_0 = 0')
-        else:
-            epoch_0 = 0
-
-        for epoch in range(epoch_0, self.autoencoder_num_epochs):
-            epoch_loss = []
-            print("Experiment: autoencoder {0}: training Epoch = ".format(self.autoencoder), epoch+1, 'out of', self.autoencoder_num_epochs, 'epochs')
-
-            # Loop through all the train data using the data loader
-            for ii, (dem, ob, ac, l, t, scores, rewards, idx) in enumerate(self.train_loader):
-                # print("Batch {}".format(ii),end='')
-                dem = dem.to(device)  # 5 dimensional vector (Gender, Ventilation status, Re-admission status, Age, Weight)
-                ob = ob.to(device)    # 33 dimensional vector (time varying measures)
-                ac = ac.to(device) # actions
-                l = l.to(device)
-                t = t.to(device)
-                scores = scores.to(device)
-                idx = idx.to(device)
-                loss_pred = 0
-
-                # Cut tensors down to the batch's largest sequence length... Trying to speed things up a bit...
-                max_length = int(l.max().item())
-
-                # The following losses are for DDM and will not be modified by any other approach
-                train_loss, dec_loss, inv_loss = 0, 0, 0
-                model_loss, recon_loss, forward_loss = 0, 0, 0                    
-                    
-                # Set training mode (nn.Module.train()). It does not actually trains the model, but just sets the model to training mode.
-                self.gen.train()
-                self.pred.train()
-
-                ob = ob[:,:max_length,:]
-                dem = dem[:,:max_length,:]
-                ac = ac[:,:max_length,:]
-                scores = scores[:,:max_length,:]
-
-                # Convert stuff to graph format in the loop
-                
-                # Special case for CDE
-                # Getting loss_pred and mse_loss
-                if self.autoencoder == 'CDE':
-                    loss_pred, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = self.corr_coeff_param, device = device, coefs = self.train_coefs, idx = idx)
-                else:
-                    loss_pred, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = self.corr_coeff_param, device=device, autoencoder = self.autoencoder)   
-
-                self.optimizer.zero_grad()
-                
-                if self.autoencoder != 'DDM':
-                    loss_pred.backward()
-                    self.optimizer.step()
-                    epoch_loss.append(loss_pred.detach().cpu().numpy())                
-                else:
-                    # For DDM
-                    train_loss, dec_loss, inv_loss, model_loss, recon_loss, forward_loss, corr_loss, loss_pred = loss_pred
-                    train_loss = forward_loss + self.inv_loss_coef*inv_loss + self.dec_loss_coef*dec_loss - self.corr_coeff_param*corr_loss.sum()
-                    train_loss.backward()
-                    # Clipping gradients to prevent exploding gradients
-                    torch.nn.utils.clip_grad_norm(self.all_params, self.max_grad_norm)
-                    self.optimizer.step()
-                    epoch_loss.append(loss_pred.detach().cpu().numpy())
-                                        
-            self.autoencoding_losses.append(epoch_loss)
-            if (epoch+1)%self.saving_period == 0: # Run validation and also save checkpoint
-                
-                #Computing validation loss
-                epoch_validation_loss = []
-                with torch.no_grad():
-                    for jj, (dem, ob, ac, l, t, scores, rewards, idx) in enumerate(self.val_loader):
-
-                        dem = dem.to(device)
-                        ob = ob.to(device)
-                        ac = ac.to(device)
-                        l = l.to(device)
-                        t = t.to(device)
-                        idx = idx.to(device)
-                        scores = scores.to(device)
-                        loss_val = 0
-
-                        # Cut tensors down to the batch's largest sequence length... Trying to speed things up a bit...
-                        max_length = int(l.max().item())                        
-                        
-                        ob = ob[:,:max_length,:]
-                        dem = dem[:,:max_length,:]
-                        ac = ac[:,:max_length,:] 
-                        scores = scores[:,:max_length,:] 
-                        
-                        self.gen.eval()
-                        self.pred.eval()    
-                        
-                        if self.autoencoder == 'CDE':
-                            loss_val, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, corr_coeff_param = 0, device = device, coefs = self.val_coefs, idx = idx)
-                        else:
-                            loss_val, mse_loss, _ = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = 0, device=device, autoencoder = self.autoencoder)                                                 
-                        
-                        if self.autoencoder in ['DST', 'ODERNN', 'CDE']:
-                            epoch_validation_loss.append(mse_loss)
-                        elif self.autoencoder == "DDM":
-                            epoch_validation_loss.append(loss_val[-1].detach().cpu().numpy())
-                        else:
-                            epoch_validation_loss.append(loss_val.detach().cpu().numpy())
-                    
-                        
-                self.autoencoding_losses_validation.append(epoch_validation_loss)
-
-                save_dict = {'epoch': epoch,
-                        'gen_state_dict': self.gen.state_dict(),
-                        'pred_state_dict': self.pred.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'loss': self.autoencoding_losses,
-                        'validation_loss': self.autoencoding_losses_validation
-                        }
-                
-                if self.autoencoder == 'DDM':
-                    save_dict['dyn_state_dict'] = self.dyn.state_dict()
-                    
-                try:
-                    torch.save(save_dict, self.checkpoint_file)
-                    # torch.save(save_dict, self.checkpoint_file[:-3] + str(epoch) +'_.pt')
-                    np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
-                except Exception as e:
-                    print(e)
-
-                
-                try:
-                    np.save(self.data_folder + '/{}_validation_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses_validation))
-                except Exception as e:
-                    print(e)
-                    
-            #Final epoch checkpoint
-            try:
-                save_dict = {
-                            'epoch': self.autoencoder_num_epochs-1,
-                            'gen_state_dict': self.gen.state_dict(),
-                            'pred_state_dict': self.pred.state_dict(),
-                            'optimizer_state_dict': self.optimizer.state_dict(),
-                            'loss': self.autoencoding_losses,
-                            'validation_loss': self.autoencoding_losses_validation,
-                            }
-                if self.autoencoder == 'DDM':
-                    save_dict['dyn_state_dict'] = self.dyn.state_dict()
-                    torch.save(self.dyn.state_dict(), self.dyn_file)
-                torch.save(self.gen.state_dict(), self.gen_file)
-                torch.save(self.pred.state_dict(), self.pred_file)
-                torch.save(save_dict, self.checkpoint_file)
-                np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
-            except Exception as e:
-                    print(e)
+   

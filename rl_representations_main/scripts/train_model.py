@@ -34,7 +34,7 @@ sys.path.append(ROOT_DIR)
 np.set_printoptions(suppress=True, linewidth=200, precision=2)
 
 @click.command()
-@click.option('--autoencoder', '-a', type=click.Choice(['AE', 'AIS', 'CDE', 'DDM', 'DST', 'ODERNN', 'RNN']))
+@click.option('--autoencoder', '-a', type=click.Choice(['AE', 'AIS', 'CDE', 'DDM', 'DST', 'ODERNN', 'RNN', 'GNN']))
 @click.option('--domain', '-d', default='sepsis', help="Only 'sepsis' implemented for now")
 @click.option('--options', '-o', multiple=True, nargs=2, type=click.Tuple([str, str]))
 def run(autoencoder, domain, options):
@@ -89,9 +89,22 @@ def run(autoencoder, domain, options):
     # rng is not used in the code later
     # params['rng'] = random_state
     params['domain'] = domain
-        
+
+
+    run_identifier = generate_run_identifier(    
+        config = {
+            'autoencoder': autoencoder,
+            'autoencoder_num_epochs': params['autoencoder_num_epochs'],
+            'learning_rate': params['autoencoder_lr'],
+            'batch_size': params['minibatch_size'], # 64, 128
+            'inject_action': params['inject_action_gnn'], # False, True
+            'encoder_hidden_size': params['encoder_hidden_size'], # 64, 128
+            'encoder_num_layers': params['encoder_num_layers'], # 2, 3
+            'hidden_size': params['hidden_size'], # 64, 128
+        })
+    
     # Update foldername to the full path 
-    folder_name = params['storage_path'] + params['folder_location'] + params['folder_name']
+    folder_name = params['storage_path'] + params['folder_location'] + run_identifier
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
     params['folder_name'] = folder_name
@@ -103,16 +116,27 @@ def run(autoencoder, domain, options):
     
     # Experiment
     experiment = Experiment(**params)
-    experiment.gnn_training()
+   
     # experiment.train_autoencoder()
-    # experiment.train_autoencoder_gnn()
-    # experiment.evaluate_trained_model()
+    experiment.evaluate_trained_model()
     experiment.train_dBCQ_policy(params['pol_learning_rate'])
     print('=' * 30)
 
     pprint(params)
     with open(folder_name + '/config.yaml', 'w') as y:
         yaml.safe_dump(params, y)  # saving params for reference
+
+
+def generate_run_identifier(config):
+    run_identifier = ''
+    
+    for key, value in config.items():
+        if isinstance(value, bool):
+            run_identifier += f'{key}_{str(value)}_'
+        else:
+            run_identifier += f'{key}_{value}_'
+    return run_identifier
+
 
 if __name__ == '__main__':
     run()

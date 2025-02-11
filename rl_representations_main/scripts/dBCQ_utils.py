@@ -256,7 +256,7 @@ def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_
 		parameters["polyak_target_update"],
 		parameters["target_update_freq"],
 		parameters["tau"]
-	)
+	) 
 
 	# Load replay buffer
 	replay_buffer.load(buffer_dir, bootstrap=True)
@@ -272,7 +272,7 @@ def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_
 			# Inside of this policy.train() function, the policy will be trained on one batch sampled from the replay buffer
 			policy.train(replay_buffer)
 
-		evaluations.append(eval_policy(policy, behav_pol, pol_eval_dataloader, parameters["discount"], is_demog, device))  # TODO Run weighted importance sampling with learned policy and behavior policy
+		evaluations.append(eval_policy(policy, behav_pol, pol_eval_dataloader, parameters["discount"], is_demog, device))
 		np.save(pol_eval_file, evaluations)
 		torch.save({'policy_Q_function':policy.Q.state_dict(), 'policy_Q_target':policy.Q_target.state_dict()}, pol_file)
 
@@ -296,16 +296,16 @@ def eval_policy(policy, behav_policy, pol_dataloader, discount, is_demog, device
 		obs_state = obs_state.to(device)
 		actions = actions.to(device)
 		demog = demog.to(device)
-
+		
 		cur_obs, cur_actions = obs_state[:,:-2,:], actions[:,:-1,:].argmax(dim=-1)
 		cur_demog, cur_rewards = demog[:,:-2,:], rewards[:,:-2]
 		
-		print(f"Debugging eval policy:")
-		print(f"representations shape: {representations.shape}")
-		print(f"cur_obs shape: {cur_obs.shape}")
-		print(f"cur_actions shape: {cur_actions.shape}")
-		print(f"cur_demog shape: {cur_demog.shape}")
-		print(f"cur_rewards shape: {cur_rewards.shape}")
+		# print(f"Debugging eval policy:")
+		# print(f"representations shape: {representations.shape}")
+		# print(f"cur_obs shape: {cur_obs.shape}")
+		# print(f"cur_actions shape: {cur_actions.shape}")
+		# print(f"cur_demog shape: {cur_demog.shape}")
+		# print(f"cur_rewards shape: {cur_rewards.shape}")
 
 		# Mask out the data corresponding to the padded observations
 		mask = (cur_obs==0).all(dim=2)
