@@ -1,5 +1,5 @@
-# device: 'cuda'
-device: 'cpu'
+device: 'cuda'
+# device: 'cpu'
 random_seed: 1234 # updated by run scripts
 folder_location: './results/'
 #  commented out because will be created based on hyperparameters
@@ -18,11 +18,11 @@ context_dim: 5                     # Number of context/demographic/binary indica
  
 dem_context: True
 # update these manually
-storage_path: '/Users/taiskha/Master Thesis/code/'
+storage_path: '/home/khakhtai/gnn-rl-sepsis/'
 
-train_data_file: '/Users/taiskha/Master Thesis/code/data/train_set_tuples'
-validation_data_file: '/Users/taiskha/Master Thesis/code/data/val_set_tuples'
-test_data_file: '/Users/taiskha/Master Thesis/code/data/test_set_tuples'
+train_data_file: '/home/khakhtai/gnn-rl-sepsis/data/train_set_tuples'
+validation_data_file: '/home/khakhtai/gnn-rl-sepsis/data/val_set_tuples'
+test_data_file: '/home/khakhtai/gnn-rl-sepsis/data/test_set_tuples'
 
-behav_policy_file_wDemo: '/Users/taiskha/Master Thesis/code/results/BC_Cloning/BC_model.pt'
+behav_policy_file_wDemo: '/home/khakhtai/gnn-rl-sepsis/results/BC_Cloning/BC_model.pt'
 behav_policy_file: '/scratch/ssd001/home/tkillian/ml4h2020_srl/BehavCloning/BC_l1e-5_n64_w0_sgd/BC_model.pt'

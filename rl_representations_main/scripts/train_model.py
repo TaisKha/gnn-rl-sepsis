@@ -117,7 +117,7 @@ def run(autoencoder, domain, options):
     # Experiment
     experiment = Experiment(**params)
    
-    # experiment.train_autoencoder()
+    experiment.train_autoencoder()
     experiment.evaluate_trained_model()
     experiment.train_dBCQ_policy(params['pol_learning_rate'])
     print('=' * 30)

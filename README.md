@@ -7,4 +7,10 @@
 
 ## Useful stuff
 
+IMPORTANT: after updating Pipfile manually, we need to run 
+`pipenv update`, which is `pipenv lock`+`pipenv sync`.
+
+It is useful to with with `--verbose` option to see error step by step.
+
+
 

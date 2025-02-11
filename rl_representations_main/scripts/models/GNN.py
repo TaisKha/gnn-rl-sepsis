@@ -32,7 +32,7 @@ class ModelContainer(AbstractContainer):
         
         # self.gen = baseRNN_generate(hidden_size, state_dim, num_actions, context_input, context_dim).to(self.device)
         metadata = self.generate_metadata(domain=domain)
-        self.gen  = SequenceGNNEncoder(hidden_channels=encoder_hidden_size, out_channels=hidden_size, num_layers=encoder_num_layers, metadata=metadata).to(self.device)
+        self.gen  = SequenceGNNEncoder(hidden_channels=encoder_hidden_size, out_channels=hidden_size, num_layers=encoder_num_layers, metadata=metadata, device=self.device).to(self.device)
         
         return self.gen
 
@@ -87,14 +87,16 @@ class ModelContainer(AbstractContainer):
         batch_full_trajectory_graphs, batch_lengths = create_trajectory_graph(data)
         graphs_batch = split_trajectory_into_steps(batch_full_trajectory_graphs, batch_lengths)
 
+       
         # Optionally, move data to device
         # This requires iterating and moving each HeteroData to the device
         for i in range(len(graphs_batch)):
             for j in range(sequence_size):
-                for key in graphs_batch[i][j].x_dict.keys():
-                    graphs_batch[i][j].x_dict[key] = graphs_batch[i][j].x_dict[key].to(device)
-                for key in graphs_batch[i][j].edge_index_dict.keys():
-                    graphs_batch[i][j].edge_index_dict[key] = graphs_batch[i][j].edge_index_dict[key].to(device)
+                graphs_batch[i][j].to(device)
+                # for key in graphs_batch[i][j].x_dict.keys():
+                #     graphs_batch[i][j].x_dict[key] = graphs_batch[i][j].x_dict[key].to(device)
+                # for key in graphs_batch[i][j].edge_index_dict.keys():
+                #     graphs_batch[i][j].edge_index_dict[key] = graphs_batch[i][j].edge_index_dict[key].to(device)
         
         # Encode the batch
         
@@ -209,7 +211,7 @@ class HeteroGNNEncoder(nn.Module):
         return out
 
 class SequenceGNNEncoder(nn.Module):
-    def __init__(self, hidden_channels=64, out_channels=128, num_layers=2, metadata=None):
+    def __init__(self, hidden_channels=64, out_channels=128, num_layers=2, metadata=None, device=None):
         
         """
         Initializes the Sequence GNN Encoder.
@@ -221,7 +223,8 @@ class SequenceGNNEncoder(nn.Module):
             metadata (tuple): Metadata for HeteroConv, typically (node_types, edge_types).
         """
         super(SequenceGNNEncoder, self).__init__()
-        self.encoder = HeteroGNNEncoder(hidden_channels, out_channels, num_layers, metadata)
+        self.device = device
+        self.encoder = HeteroGNNEncoder(hidden_channels, out_channels, num_layers, metadata).to(self.device)
         
     def forward(self, graphs_batch):
         """
@@ -242,7 +245,7 @@ class SequenceGNNEncoder(nn.Module):
         all_graphs = [graph for batch in graphs_batch for graph in batch]
         
         # Create a Batch object from the flattened list
-        batch = Batch.from_data_list(all_graphs)
+        batch = Batch.from_data_list(all_graphs).to(self.device)
         
         # Encode all graphs
         encoded = self.encoder(batch)  # Shape: (batch_size * sequence_size, out_channels)

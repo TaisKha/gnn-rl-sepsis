@@ -8,9 +8,9 @@ hidden_size: 64
 
 # Autoencoder Hyperparameters
 
-autoencoder_saving_period: 1 # Validation
+autoencoder_saving_period: 10 # Validation
 inject_action_gnn: True
-autoencoder_num_epochs: 1
+autoencoder_num_epochs: 200
 autoencoder_lr: 0.001 
 encoder_hidden_size: 64
 encoder_num_layers: 2
