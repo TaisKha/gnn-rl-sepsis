@@ -26,6 +26,7 @@ from torch.utils.data import TensorDataset, DataLoader
 
 from dBCQ_utils import BehaviorCloning
 from utils import ReplayBuffer
+import wandb
 
 
 def run(BC_network, train_dataloader, val_dataloader, num_epochs, storage_dir, loss_func, device):
@@ -39,6 +40,7 @@ def run(BC_network, train_dataloader, val_dataloader, num_epochs, storage_dir, l
         
         train_loss = BC_network.train_epoch(train_dataloader)
         training_losses.append(train_loss)
+        wandb.log({'epoch': i_epoch, 'train_loss': train_loss})
 
         if i_epoch % eval_frequency == 0:
             eval_errors = []
@@ -58,8 +60,8 @@ def run(BC_network, train_dataloader, val_dataloader, num_epochs, storage_dir, l
             validation_losses.append(mean_val_loss)
             np.save(storage_dir+'validation_losses.npy', validation_losses)
             np.save(storage_dir+'training_losses.npy', training_losses)
-
-            print(f"Training iterations: {i_epoch}, Validation Loss: {mean_val_loss}")
+            wandb.log({'epoch': i_epoch, 'val_loss': mean_val_loss})
+            # print(f"Training iterations: {i_epoch}, Validation Loss: {mean_val_loss}")
             # Save off and store trained BC model
             torch.save(BC_network.model.state_dict(), storage_dir+'BC_model.pt')
 
@@ -117,6 +119,16 @@ if __name__ == '__main__':
 
     # Initialize the BC network
     BC_network = BehaviorCloning(input_dim, num_actions, behavCloning_params["num_nodes"], behavCloning_params["learning_rate"], behavCloning_params["weight_decay"], behavCloning_params["optim_type"], device)
+
+    wandb.init(project='sepsis-behavioral-cloning', config={
+            
+            'num_epochs': behavCloning_params['num_epochs'],
+            'learning_rate': behavCloning_params['learning_rate'],
+            'batch_size': behavCloning_params['batch_size'],
+            'hidden_size': behavCloning_params['hidden_size'],
+            'num_nodes': behavCloning_params['num_nodes']
+            }
+        )
 
     loss_func = nn.CrossEntropyLoss()
 

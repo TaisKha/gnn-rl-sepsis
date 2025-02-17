@@ -110,7 +110,9 @@ class Experiment(object):
             'encoder_hidden_size': self.encoder_hidden_size, # 64, 128
             'encoder_num_layers': self.encoder_num_layers, # 2, 3
             'hidden_size': self.hidden_size, # 64, 128
-        })
+            }, 
+            notes="device cpu to compare with jumping-water-19"
+        )
 
         
         self.autoencoder_lower = self.autoencoder.lower()
