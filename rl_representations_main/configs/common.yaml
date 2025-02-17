@@ -17,6 +17,7 @@ context_dim: 5                     # Number of context/demographic/binary indica
 
  
 dem_context: True
+bcq_num_nodes: 64 # as in the paper
 # update these manually
 storage_path: '/home/khakhtai/gnn-rl-sepsis/'
 

@@ -63,7 +63,7 @@ class Experiment(object):
                 autoencoder_num_epochs=50, autoencoder_lr=0.001, autoencoder='AIS', hidden_size=16, ais_gen_model=1, 
                 ais_pred_model=1, embedding_dim=4, state_dim=42, num_actions=25, corr_coeff_param=10, dst_hypers = {},
                  cde_hypers = {}, odernn_hypers = {},  bc_num_nodes = 64, state_dim_gnn = 0, inject_action_gnn = False,
-                encoder_hidden_size = 128, encoder_num_layers = 2, **kwargs):
+                encoder_hidden_size = 128, encoder_num_layers = 2, bcq_num_nodes = 64, **kwargs):
         '''
         We assume discrete actions and scalar rewards!
         '''

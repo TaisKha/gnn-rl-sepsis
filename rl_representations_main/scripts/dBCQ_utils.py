@@ -136,6 +136,7 @@ class discrete_BCQ(object):
 		num_actions,
 		state_dim,
 		device,
+		bcq_num_nodes,
 		BCQ_threshold=0.3,
 		discount=0.99,
 		optimizer="Adam",
@@ -143,12 +144,13 @@ class discrete_BCQ(object):
 		polyak_target_update=False,
 		target_update_frequency=1e3,
 		tau=0.005
+		
 	):
 	
 		self.device = device
 
 		# Determine network type
-		self.Q = FC_Q(state_dim, num_actions).to(self.device)
+		self.Q = FC_Q(state_dim, num_actions, bcq_num_nodes).to(self.device)
 		self.Q_target = copy.deepcopy(self.Q)
 		self.Q_optimizer = getattr(torch.optim, optimizer)(self.Q.parameters(), **optimizer_parameters)
 
@@ -238,7 +240,7 @@ class discrete_BCQ(object):
 			self.Q_target.load_state_dict(self.Q.state_dict())
 
 
-def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_pol, pol_eval_dataloader, is_demog):
+def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_pol, pol_eval_dataloader, is_demog, bcq_num_nodes):
 	# For saving files
 	pol_eval_file = parameters['pol_eval_file']
 	pol_file = parameters['policy_file']
@@ -249,6 +251,7 @@ def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_
 		num_actions,
 		state_dim,
 		device,
+		bcq_num_nodes,
 		parameters["BCQ_threshold"],
 		parameters["discount"],
 		parameters["optimizer"],
