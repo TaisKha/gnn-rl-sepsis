@@ -38,8 +38,8 @@ class AbstractContainer(ABC):
         else:
             hidden_states = self.gen(torch.cat((cur_obs, torch.cat((torch.zeros((obs.shape[0],1,actions.shape[-1])).to(device), actions[:,:-2,:]),dim=1)), dim=-1))
 
-        print(f"{hidden_states.shape=}")
-        print(f"{actions.shape=}")
+        # print(f"{hidden_states.shape=}")
+        # print(f"{actions.shape=}")
 
         # For RNN autoencoder, we only need the hidden states as input to the decoder
         # For the others, we need to concatenate the hidden states with the actions
@@ -48,7 +48,7 @@ class AbstractContainer(ABC):
         else:
             pred_obs = self.pred(torch.cat((hidden_states,actions[:,:-1,:]),dim=-1))
 
-        print(f"{pred_obs.shape=}")
+        # print(f"{pred_obs.shape=}")
 
         # Calculate the correlation between the hidden parameters and the acuity score (For now we'll use SOFA--idx 0)
         corr_loss = pearson_correlation(hidden_states[~mask], scores[:,:-1,:][~mask], device=device)

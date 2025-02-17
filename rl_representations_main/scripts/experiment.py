@@ -50,7 +50,7 @@ import os
 from dBCQ_utils import *
 
 # from models import AE, AIS, CDE, DST, DDM, RNN, ODERNN
-from models import RNN, GNN
+from models import RNN, GNN, AE
 from models.graph_utils import create_trajectory_graph, split_trajectory_into_steps
 # from models import HTGNN
 from models.common import get_dynamics_losses, pearson_correlation, mask_from_lengths
@@ -91,6 +91,7 @@ class Experiment(object):
         self.encoder_num_layers = encoder_num_layers
 
         self.bc_num_nodes = bc_num_nodes
+        self.bcq_num_nodes = bcq_num_nodes
 
         self.context_input = context_input # Check to see if we'll one-hot encode the categorical contextual input
         self.context_dim = context_dim # Check to see if we'll remove the context from the input and only use it for decoding
@@ -105,13 +106,12 @@ class Experiment(object):
             'autoencoder': self.autoencoder,
             'autoencoder_num_epochs': self.autoencoder_num_epochs,
             'learning_rate': self.autoencoder_lr,
-            'batch_size': self.minibatch_size, # 64, 128
-            'inject_action': self.inject_action_gnn, # False, True
-            'encoder_hidden_size': self.encoder_hidden_size, # 64, 128
-            'encoder_num_layers': self.encoder_num_layers, # 2, 3
-            'hidden_size': self.hidden_size, # 64, 128
+            'batch_size': self.minibatch_size, # 128
+            # 'inject_action': self.inject_action_gnn, # True
+            # 'encoder_hidden_size': self.encoder_hidden_size, # 64, 128
+            # 'encoder_num_layers': self.encoder_num_layers, # 2, 3
+            'hidden_size': self.hidden_size, # 64
             }, 
-            notes="device cpu to compare with jumping-water-19"
         )
 
         
@@ -246,6 +246,8 @@ class Experiment(object):
 
     def train_autoencoder(self):
         print('Experiment: training autoencoder')
+        prediction_state_size = self.state_dim if self.autoencoder != "GNN" else self.state_dim_gnn
+
         device = self.device
         
         if self.autoencoder != 'DDM':
@@ -336,9 +338,12 @@ class Experiment(object):
             train_num_batches = len(self.train_loader)    
             train_epoch_loss_sum = np.sum(epoch_loss)
             train_mean_batch_loss = train_epoch_loss_sum / train_num_batches
+            train_mean_one_prediction_loss = train_mean_batch_loss / self.minibatch_size
+            train_mean_one_feature_loss = train_mean_one_prediction_loss / prediction_state_size
+
             epoch_number = epoch + 1
             
-            wandb.log({"epoch": epoch_number, "train_loss": train_mean_batch_loss})
+            wandb.log({"epoch": epoch_number, "train_loss": train_mean_one_feature_loss})
                                         
             self.autoencoding_losses.append(epoch_loss)
             if (epoch+1)%self.saving_period == 0: # Run validation and also save checkpoint
@@ -386,7 +391,10 @@ class Experiment(object):
                 val_epoch_loss_sum = np.sum(epoch_validation_loss)
                 val_mean_batch_loss = val_epoch_loss_sum / val_num_batches
                 epoch_number = epoch + 1
-                wandb.log({"epoch": epoch_number, "val_loss": val_mean_batch_loss})        
+                val_mean_one_prediction_loss = val_mean_batch_loss / self.minibatch_size
+                val_mean_one_feature_loss = val_mean_one_prediction_loss / prediction_state_size
+
+                wandb.log({"epoch": epoch_number, "val_loss": val_mean_one_feature_loss})        
                 self.autoencoding_losses_validation.append(epoch_validation_loss)
 
                 save_dict = {'epoch': epoch,
@@ -700,7 +708,7 @@ class Experiment(object):
         behav_pol.eval()
 
         # Run dBCQ_utils.train_dBCQ
-        train_dBCQ(replay_buffer, self.num_actions, self.hidden_size, self.device, params, behav_pol, pol_eval_dataloader, self.context_input)
+        train_dBCQ(replay_buffer, self.num_actions, self.hidden_size, self.device, params, behav_pol, pol_eval_dataloader, self.context_input, self.bcq_num_nodes)
 
 
    

@@ -96,11 +96,11 @@ def run(autoencoder, domain, options):
             'autoencoder': autoencoder,
             'autoencoder_num_epochs': params['autoencoder_num_epochs'],
             'learning_rate': params['autoencoder_lr'],
-            'batch_size': params['minibatch_size'], # 64, 128
-            'inject_action': params['inject_action_gnn'], # False, True
-            'encoder_hidden_size': params['encoder_hidden_size'], # 64, 128
-            'encoder_num_layers': params['encoder_num_layers'], # 2, 3
-            'hidden_size': params['hidden_size'], # 64, 128
+            'batch_size': params['minibatch_size'], # 128
+            'inject_action': params.get('inject_action_gnn', None), # True
+            'encoder_hidden_size': params.get('encoder_hidden_size', None), # 64, 128
+            'encoder_num_layers': params.get('encoder_num_layers', None), # 2, 3
+            'hidden_size': params['hidden_size'], # 64
         })
     
     # Update foldername to the full path 
