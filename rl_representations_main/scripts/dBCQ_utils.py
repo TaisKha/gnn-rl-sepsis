@@ -29,6 +29,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import utils
+import wandb
 
 
 # Simple full-connected supervised network for Behavior Cloning of batch data
@@ -240,7 +241,7 @@ class discrete_BCQ(object):
 			self.Q_target.load_state_dict(self.Q.state_dict())
 
 
-def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_pol, pol_eval_dataloader, is_demog, bcq_num_nodes):
+def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_pol, pol_eval_dataloader, is_demog, bcq_num_nodes, log):
 	# For saving files
 	pol_eval_file = parameters['pol_eval_file']
 	pol_file = parameters['policy_file']
@@ -276,11 +277,17 @@ def train_dBCQ(replay_buffer, num_actions, state_dim, device, parameters, behav_
 			policy.train(replay_buffer)
 
 		evaluations.append(eval_policy(policy, behav_pol, pol_eval_dataloader, parameters["discount"], is_demog, device))
+		
 		np.save(pol_eval_file, evaluations)
 		torch.save({'policy_Q_function':policy.Q.state_dict(), 'policy_Q_target':policy.Q_target.state_dict()}, pol_file)
 
 		training_iters += int(parameters["eval_freq"])
 		print(f"Training iterations: {training_iters}")
+		if log:
+			wandb.log({
+				'training_iters': training_iters,
+				'wis': evaluations[-1]
+			})
 
 '''The following is the original dBCQ's evaluation script that we'll need to replace 
 with weighted importance sampling between the learned `policy` and the observed policy'''

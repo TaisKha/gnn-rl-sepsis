@@ -36,11 +36,17 @@ np.set_printoptions(suppress=True, linewidth=200, precision=2)
 @click.command()
 @click.option('--autoencoder', '-a', type=click.Choice(['AE', 'AIS', 'CDE', 'DDM', 'DST', 'ODERNN', 'RNN', 'GNN']))
 @click.option('--domain', '-d', default='sepsis', help="Only 'sepsis' implemented for now")
+@click.option('--autoencoder_config_override', '-d', default='', help="Option introduced to override autoencoder config if file provided")
 @click.option('--options', '-o', multiple=True, nargs=2, type=click.Tuple([str, str]))
-def run(autoencoder, domain, options):
+def run(autoencoder, domain, autoencoder_config_override, options):
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    params = yaml.safe_load(open(os.path.join(dir_path, '../configs/common.yaml'), 'r'))    
-    cfg_file = os.path.join(dir_path, '../configs/config_' + domain + f'_{autoencoder.lower()}.yaml')
+    params = yaml.safe_load(open(os.path.join(dir_path, '../configs/common.yaml'), 'r'))
+
+    # If autoencoder_config_override is not provided, then use usual autoencoder specific config
+    if not autoencoder_config_override:
+        cfg_file = os.path.join(dir_path, '../configs/config_' + domain + f'_{autoencoder.lower()}.yaml')
+    else:
+        cfg_file = autoencoder_config_override
 
     bc_config = yaml.safe_load(open(os.path.join(dir_path, '../configs/config_behavCloning.yaml'), 'r'))
 
@@ -116,12 +122,20 @@ def run(autoencoder, domain, options):
     
     # Experiment
     experiment = Experiment(**params)
-   
-    experiment.train_autoencoder()
-    experiment.evaluate_trained_model()
-    experiment.train_dBCQ_policy(params['pol_learning_rate'])
+    if params['log_autoencoder_training'] and params['log_BCQ_training']:
+        raise Exception("The params['log_autoencoder_training'] and params['log_BCQ_training'] are both set to True.\
+                         Only one of them should be set to True")
+    
+    if params['log_autoencoder_training']:
+        experiment.train_autoencoder()
+        
+    if params['log_BCQ_training']:
+        experiment.evaluate_trained_model()
+        experiment.train_dBCQ_policy(params['pol_learning_rate'])
     print('=' * 30)
 
+    # Convert torch.device() into str
+    params['device'] = str(params['device'])
     pprint(params)
     with open(folder_name + '/config.yaml', 'w') as y:
         yaml.safe_dump(params, y)  # saving params for reference

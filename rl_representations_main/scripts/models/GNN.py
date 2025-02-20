@@ -93,10 +93,7 @@ class ModelContainer(AbstractContainer):
         for i in range(len(graphs_batch)):
             for j in range(sequence_size):
                 graphs_batch[i][j].to(device)
-                # for key in graphs_batch[i][j].x_dict.keys():
-                #     graphs_batch[i][j].x_dict[key] = graphs_batch[i][j].x_dict[key].to(device)
-                # for key in graphs_batch[i][j].edge_index_dict.keys():
-                #     graphs_batch[i][j].edge_index_dict[key] = graphs_batch[i][j].edge_index_dict[key].to(device)
+               
         
         # Encode the batch
         

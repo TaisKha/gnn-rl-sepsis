@@ -1,0 +1,11 @@
+autoencoder: GNN
+autoencoder_lr: 0.0001
+autoencoder_num_epochs: 200
+autoencoder_saving_period: 10
+context_input: true
+corr_coeff_param: 0
+encoder_hidden_size: 128
+encoder_num_layers: 3
+hidden_size: 64
+inject_action_gnn: true
+pol_learning_rate: 0.001

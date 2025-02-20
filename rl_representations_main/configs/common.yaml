@@ -1,5 +1,9 @@
-device: 'cuda'
-# device: 'cpu'
+# Only one of the following two should be set to True
+log_autoencoder_training: True
+log_BCQ_training: False
+
+# device: 'cuda'
+device: 'cpu'
 random_seed: 1234 # updated by run scripts
 folder_location: './results/'
 #  commented out because will be created based on hyperparameters

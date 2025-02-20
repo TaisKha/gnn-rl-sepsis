@@ -63,7 +63,7 @@ class Experiment(object):
                 autoencoder_num_epochs=50, autoencoder_lr=0.001, autoencoder='AIS', hidden_size=16, ais_gen_model=1, 
                 ais_pred_model=1, embedding_dim=4, state_dim=42, num_actions=25, corr_coeff_param=10, dst_hypers = {},
                  cde_hypers = {}, odernn_hypers = {},  bc_num_nodes = 64, state_dim_gnn = 0, inject_action_gnn = False,
-                encoder_hidden_size = 128, encoder_num_layers = 2, bcq_num_nodes = 64, **kwargs):
+                encoder_hidden_size = 128, encoder_num_layers = 2, bcq_num_nodes = 64, log_autoencoder_training = False, log_BCQ_training = True, **kwargs):
         '''
         We assume discrete actions and scalar rewards!
         '''
@@ -102,17 +102,34 @@ class Experiment(object):
         else:
             self.input_dim = self.state_dim + self.num_actions
 
-        wandb.init(project='sepsis-data-autoencoder', config={
-            'autoencoder': self.autoencoder,
-            'autoencoder_num_epochs': self.autoencoder_num_epochs,
-            'learning_rate': self.autoencoder_lr,
-            'batch_size': self.minibatch_size, # 128
-            # 'inject_action': self.inject_action_gnn, # True
-            # 'encoder_hidden_size': self.encoder_hidden_size, # 64, 128
-            # 'encoder_num_layers': self.encoder_num_layers, # 2, 3
-            'hidden_size': self.hidden_size, # 64
-            }, 
-        )
+        self.log_autoencoder_training = log_autoencoder_training
+        self.log_BCQ_training = log_BCQ_training
+        if log_autoencoder_training:
+            wandb.init(project='sepsis-data-autoencoder', config={
+                'autoencoder': self.autoencoder,
+                'autoencoder_num_epochs': self.autoencoder_num_epochs,
+                'learning_rate': self.autoencoder_lr,
+                'batch_size': self.minibatch_size, # 128
+                'inject_action': self.inject_action_gnn, # True
+                'encoder_hidden_size': self.encoder_hidden_size, # 64, 128
+                'encoder_num_layers': self.encoder_num_layers, # 2, 3
+                'hidden_size': self.hidden_size, # 64
+                }, 
+            )
+        
+        if log_BCQ_training:
+            wandb.init(project='sepsis-BCQ', config={
+                'autoencoder': self.autoencoder,
+                # 'autoencoder_num_epochs': self.autoencoder_num_epochs,
+                # 'learning_rate': self.autoencoder_lr,
+                # 'batch_size': self.minibatch_size, # 128
+                # 'inject_action': self.inject_action_gnn, # True
+                # 'encoder_hidden_size': self.encoder_hidden_size, # 64, 128
+                # 'encoder_num_layers': self.encoder_num_layers, # 2, 3
+                # 'hidden_size': self.hidden_size, # 64
+                }, 
+            )
+
 
         
         self.autoencoder_lower = self.autoencoder.lower()
@@ -342,8 +359,8 @@ class Experiment(object):
             train_mean_one_feature_loss = train_mean_one_prediction_loss / prediction_state_size
 
             epoch_number = epoch + 1
-            
-            wandb.log({"epoch": epoch_number, "train_loss": train_mean_one_feature_loss})
+            if self.log_autoencoder_training:
+                wandb.log({"epoch": epoch_number, "train_loss": train_mean_one_feature_loss})
                                         
             self.autoencoding_losses.append(epoch_loss)
             if (epoch+1)%self.saving_period == 0: # Run validation and also save checkpoint
@@ -394,7 +411,8 @@ class Experiment(object):
                 val_mean_one_prediction_loss = val_mean_batch_loss / self.minibatch_size
                 val_mean_one_feature_loss = val_mean_one_prediction_loss / prediction_state_size
 
-                wandb.log({"epoch": epoch_number, "val_loss": val_mean_one_feature_loss})        
+                if self.log_autoencoder_training:
+                    wandb.log({"epoch": epoch_number, "val_loss": val_mean_one_feature_loss})        
                 self.autoencoding_losses_validation.append(epoch_validation_loss)
 
                 save_dict = {'epoch': epoch,
@@ -550,57 +568,7 @@ class Experiment(object):
                         _, pred_error, representations = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = 0, device=self.device, coefs = i_coefs, idx = idx) 
                         representations = representations[:, :-1, :].detach()
                     elif self.autoencoder == 'GNN':
-                        # For GNN we need to rearrange one dem feature into obs
-                        gnn_demography_new = dem[:, :, :-1]  # Shape: (128, 20, 4)
-                        # Extract the last column from dem
-                        gnn_demography_last_column = dem[:, :, -1:]  # Shape: (128, 20, 1)
-                        # Append the last column to obs
-                        gnn_obs_new = torch.cat([ob, gnn_demography_last_column], dim=2)  # Shape: (128, 20, 33+1=34)
-
-                        gnn_obs = gnn_obs_new
-                        gnn_dem = gnn_demography_new
-                        
-                        gnn_cur_obs, gnn_next_obs = gnn_obs[:,:-1,:], gnn_obs[:,1:,:]
-                        gnn_cur_dem = gnn_dem[:,:-1,:] # (128, 19, 4)
-                        
-                        # And we need to subtract 1 from every length, because we cut one element from every trajectory in the minibatch
-                        gnn_curr_l = l - 1
-                        gnn_cur_actions = cur_actions
-                        
-                        mask = (gnn_cur_obs ==0).all(dim=2) # Compute mask for extra appended rows of observations (all zeros along dim 2)
-                
-                        sequence_size = gnn_cur_obs.shape[1] # number of steps in a trajectory
-                
-
-                        data = (gnn_cur_dem, gnn_cur_obs, gnn_cur_actions, gnn_curr_l)
-                        batch_full_trajectory_graphs, batch_lengths = create_trajectory_graph(data)
-                        graphs_batch = split_trajectory_into_steps(batch_full_trajectory_graphs, batch_lengths)
-
-                        # Optionally, move data to device
-                        # This requires iterating and moving each HeteroData to the device
-                        for i in range(len(graphs_batch)):
-                            for j in range(sequence_size):
-                                for key in graphs_batch[i][j].x_dict.keys():
-                                    graphs_batch[i][j].x_dict[key] = graphs_batch[i][j].x_dict[key].to(self.device)
-                                for key in graphs_batch[i][j].edge_index_dict.keys():
-                                    graphs_batch[i][j].edge_index_dict[key] = graphs_batch[i][j].edge_index_dict[key].to(self.device)
-                        
-                        # Encode the batch
-                        representations = self.gen(graphs_batch)  # Shape: (batch_size, sequence_size, 128)
-
-                        if self.inject_action_gnn:
-                            pred_obs = self.pred(torch.cat((representations, cur_actions), dim=-1))
-                        else: 
-                            pred_obs = self.pred(representations)
-
-
-                        assert pred_obs.shape == gnn_next_obs.shape
-
-                        
-                        temp_loss = -torch.distributions.MultivariateNormal(pred_obs, torch.eye(pred_obs.shape[-1]).to(self.device)).log_prob(gnn_next_obs)
-                        mse_loss = sum(temp_loss[~mask])
-                        pred_error = mse_loss
-
+                        _, pred_error, representations = self.container.loop(ob, dem, ac, scores, l, max_length, self.context_input, corr_coeff_param = 0, device=self.device, autoencoder = self.autoencoder)                                                  
                         
 
                                                 
@@ -708,7 +676,7 @@ class Experiment(object):
         behav_pol.eval()
 
         # Run dBCQ_utils.train_dBCQ
-        train_dBCQ(replay_buffer, self.num_actions, self.hidden_size, self.device, params, behav_pol, pol_eval_dataloader, self.context_input, self.bcq_num_nodes)
+        train_dBCQ(replay_buffer, self.num_actions, self.hidden_size, self.device, params, behav_pol, pol_eval_dataloader, self.context_input, self.bcq_num_nodes, self.log_BCQ_training)
 
 
    
