@@ -1,10 +1,11 @@
 # Only one of the following two should be set to True
-log_autoencoder_training: True
-log_BCQ_training: False
+log_autoencoder_training: False
+log_BCQ_training: True
 
-# device: 'cuda'
-device: 'cpu'
-random_seed: 1234 # updated by run scripts
+device: 'cuda:2'
+#device: 'cpu'
+random_seed: 1234 # updated by run scripts 25, 32, 1234, 2020
+random_seed_bcq: 25
 folder_location: './results/'
 #  commented out because will be created based on hyperparameters
 # folder_name: 'test' # updated by run scripts 

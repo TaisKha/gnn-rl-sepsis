@@ -13,4 +13,8 @@ IMPORTANT: after updating Pipfile manually, we need to run
 It is useful to with with `--verbose` option to see error step by step.
 
 
+tmux scrolling:
+
+`Ctrl-b` then `[` then you can use your normal navigation keys to scroll around. Press q to quit scroll mode.
+
 

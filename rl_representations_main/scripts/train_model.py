@@ -89,6 +89,8 @@ def run(autoencoder, domain, autoencoder_config_override, options):
             params['device'] = torch.device('cpu')
 
     random_seed = params['random_seed']
+    random_seed_bcq = params.get('random_seed_bcq', None)
+    random_seed = random_seed_bcq if random_seed_bcq else random_seed
     np.random.seed(random_seed)
     torch.manual_seed(random_seed)
     random_state = np.random.RandomState(random_seed)
@@ -100,6 +102,7 @@ def run(autoencoder, domain, autoencoder_config_override, options):
     run_identifier = generate_run_identifier(    
         config = {
             'autoencoder': autoencoder,
+            'gnn_gentype': params.get('gnn_gentype', None),
             'autoencoder_num_epochs': params['autoencoder_num_epochs'],
             'learning_rate': params['autoencoder_lr'],
             'batch_size': params['minibatch_size'], # 128
@@ -107,6 +110,7 @@ def run(autoencoder, domain, autoencoder_config_override, options):
             'encoder_hidden_size': params.get('encoder_hidden_size', None), # 64, 128
             'encoder_num_layers': params.get('encoder_num_layers', None), # 2, 3
             'hidden_size': params['hidden_size'], # 64
+            'random_seed': params['random_seed']
         })
     
     # Update foldername to the full path 

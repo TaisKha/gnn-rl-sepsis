@@ -1,4 +1,5 @@
 autoencoder: 'GNN' 
+gnn_gentype: 2 # 1 or 2. 1 is SAGEConv; 2 is GATv2Conv
             
 context_input: True              
 
@@ -15,7 +16,7 @@ autoencoder_num_epochs: 200
 
 autoencoder_lr: 0.001 
 encoder_hidden_size: 64
-encoder_num_layers: 2
+encoder_num_layers: 1 #1 layers for gnn_gentype 2, 2 layers for gnn_gentype 1.
 
 # Not used
 corr_coeff_param: 0   

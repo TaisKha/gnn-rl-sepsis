@@ -63,12 +63,17 @@ class Experiment(object):
                 autoencoder_num_epochs=50, autoencoder_lr=0.001, autoencoder='AIS', hidden_size=16, ais_gen_model=1, 
                 ais_pred_model=1, embedding_dim=4, state_dim=42, num_actions=25, corr_coeff_param=10, dst_hypers = {},
                  cde_hypers = {}, odernn_hypers = {},  bc_num_nodes = 64, state_dim_gnn = 0, inject_action_gnn = False,
-                encoder_hidden_size = 128, encoder_num_layers = 2, bcq_num_nodes = 64, log_autoencoder_training = False, log_BCQ_training = True, **kwargs):
+                encoder_hidden_size = 128, encoder_num_layers = 2, bcq_num_nodes = 64, log_autoencoder_training = False, log_BCQ_training = True,
+                gnn_gentype=1, random_seed = 123, random_seed_bcq=None, **kwargs):
         '''
         We assume discrete actions and scalar rewards!
         '''
         # self.rng is not used in the code
         # self.rng = rng
+        self.random_seed = random_seed
+        # this random_seed_bcq is needed when I want to train different BCQ runs from the same encoder model
+        self.random_seed_bcq = random_seed_bcq
+
         self.device = device
         self.train_data_file = train_data_file
         self.validation_data_file = validation_data_file
@@ -96,6 +101,8 @@ class Experiment(object):
         self.context_input = context_input # Check to see if we'll one-hot encode the categorical contextual input
         self.context_dim = context_dim # Check to see if we'll remove the context from the input and only use it for decoding
         self.hidden_size = hidden_size
+
+        self.gnn_gentype = gnn_gentype
         
         if self.context_input:
             self.input_dim = self.state_dim + self.context_dim + self.num_actions
@@ -104,9 +111,13 @@ class Experiment(object):
 
         self.log_autoencoder_training = log_autoencoder_training
         self.log_BCQ_training = log_BCQ_training
+        if self.autoencoder == "GNN":
+            wandb_autoencoder = self.autoencoder + str(self.gnn_gentype)
+        else:
+            wandb_autoencoder = self.autoencoder
         if log_autoencoder_training:
             wandb.init(project='sepsis-data-autoencoder', config={
-                'autoencoder': self.autoencoder,
+                'autoencoder': wandb_autoencoder,
                 'autoencoder_num_epochs': self.autoencoder_num_epochs,
                 'learning_rate': self.autoencoder_lr,
                 'batch_size': self.minibatch_size, # 128
@@ -114,12 +125,15 @@ class Experiment(object):
                 'encoder_hidden_size': self.encoder_hidden_size, # 64, 128
                 'encoder_num_layers': self.encoder_num_layers, # 2, 3
                 'hidden_size': self.hidden_size, # 64
+                'random_seed': self.random_seed
                 }, 
             )
         
         if log_BCQ_training:
             wandb.init(project='sepsis-BCQ', config={
-                'autoencoder': self.autoencoder,
+                'autoencoder': wandb_autoencoder,
+                'random_seed': self.random_seed,
+                'random_seed_bcq': self.random_seed_bcq,
                 # 'autoencoder_num_epochs': self.autoencoder_num_epochs,
                 # 'learning_rate': self.autoencoder_lr,
                 # 'batch_size': self.minibatch_size, # 128
@@ -207,7 +221,7 @@ class Experiment(object):
         elif self.autoencoder == 'GNN':
             self.container = GNN.ModelContainer(device)
             
-            self.gen = self.container.make_encoder(hidden_size=self.hidden_size, encoder_hidden_size=self.encoder_hidden_size, encoder_num_layers=self.encoder_num_layers)
+            self.gen = self.container.make_encoder(hidden_size=self.hidden_size, encoder_hidden_size=self.encoder_hidden_size, encoder_num_layers=self.encoder_num_layers, gentype=self.gnn_gentype)
             self.pred = self.container.make_decoder(self.hidden_size, self.state_dim_gnn, self.num_actions, inject_action=self.inject_action_gnn)
         else:
             raise NotImplementedError
@@ -642,8 +656,8 @@ class Experiment(object):
             "polyak_target_update": True,
             "target_update_freq": 1,
             "tau": 0.01,
-            "max_timesteps": 5e5,
-            # "max_timesteps": 1,
+            # "max_timesteps": 5e5,
+            "max_timesteps": 1e6,
             "BCQ_threshold": 0.3,
             "buffer_dir": self.buffer_save_file,
             "policy_file": self.policy_save_file+f'_l{pol_learning_rate}.pt',

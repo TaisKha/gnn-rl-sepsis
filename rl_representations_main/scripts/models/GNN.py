@@ -7,7 +7,7 @@ from .common import weights_init
 from .common import pearson_correlation
 import torch
 import torch.nn as nn
-from torch_geometric.nn import HeteroConv, SAGEConv, global_mean_pool
+from torch_geometric.nn import HeteroConv, SAGEConv, global_mean_pool, GATv2Conv
 from torch_geometric.data import Batch, HeteroData
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -28,11 +28,11 @@ class ModelContainer(AbstractContainer):
             raise NotImplementedError("Only sepsis domain is supported")
         return metadata
     
-    def make_encoder(self, hidden_size, domain="sepsis", encoder_hidden_size=128, encoder_num_layers=2):
+    def make_encoder(self, hidden_size, domain="sepsis", encoder_hidden_size=128, encoder_num_layers=2, gentype=1):
         
         # self.gen = baseRNN_generate(hidden_size, state_dim, num_actions, context_input, context_dim).to(self.device)
         metadata = self.generate_metadata(domain=domain)
-        self.gen  = SequenceGNNEncoder(hidden_channels=encoder_hidden_size, out_channels=hidden_size, num_layers=encoder_num_layers, metadata=metadata, device=self.device).to(self.device)
+        self.gen  = SequenceGNNEncoder(hidden_channels=encoder_hidden_size, out_channels=hidden_size, num_layers=encoder_num_layers, metadata=metadata, device=self.device, gentype=gentype).to(self.device)
         
         return self.gen
 
@@ -208,7 +208,7 @@ class HeteroGNNEncoder(nn.Module):
         return out
 
 class SequenceGNNEncoder(nn.Module):
-    def __init__(self, hidden_channels=64, out_channels=128, num_layers=2, metadata=None, device=None):
+    def __init__(self, hidden_channels=64, out_channels=128, num_layers=2, metadata=None, device=None, gentype=1):
         
         """
         Initializes the Sequence GNN Encoder.
@@ -221,7 +221,11 @@ class SequenceGNNEncoder(nn.Module):
         """
         super(SequenceGNNEncoder, self).__init__()
         self.device = device
-        self.encoder = HeteroGNNEncoder(hidden_channels, out_channels, num_layers, metadata).to(self.device)
+        if gentype == 1:
+
+            self.encoder = HeteroGNNEncoder(hidden_channels, out_channels, num_layers, metadata).to(self.device)
+        else:
+            self.encoder = HeteroGNNEncoderGATv2Conv(hidden_channels, out_channels, num_layers, metadata).to(self.device)
         
     def forward(self, graphs_batch):
         """
@@ -269,3 +273,92 @@ class GNN_predict(nn.Module):
         obs = self.l3(h)
         return obs
     
+class HeteroGNNEncoderGATv2Conv(nn.Module):
+    def __init__(self, hidden_channels=64, out_channels=128, num_layers=2, metadata=None):
+        """
+        Initializes the Heterogeneous GNN Encoder.
+
+        Args:
+            hidden_channels (int): Number of hidden units in GNN layers.
+            out_channels (int): Dimension of the output latent vector.
+            num_layers (int): Number of GNN layers.
+            metadata (tuple): Metadata for HeteroConv, typically (node_types, edge_types).
+        """
+        super(HeteroGNNEncoderGATv2Conv, self).__init__()
+        
+        if metadata is None:
+            raise ValueError("Metadata must be provided for HeteroConv.")
+        
+        node_types, edge_types = metadata
+        self.node_types = node_types
+        self.edge_types = edge_types
+        
+        # Define HeteroConv layers
+        self.convs = nn.ModuleList()
+        for _ in range(num_layers):
+            conv_dict = {}
+            for edge_type in edge_types:
+                src, rel, dst = edge_type
+                if rel == "action":
+                    edge_dim = 25
+                else:
+                    edge_dim = 1
+                conv_dict[edge_type] = GATv2Conv(-1, hidden_channels, edge_dim=edge_dim, add_self_loops=False)
+            hetero_conv = HeteroConv(conv_dict, aggr='sum')
+            self.convs.append(hetero_conv)
+        
+        # Linear layer to project to latent space
+        self.linear = nn.Linear(hidden_channels, out_channels)
+        self.activation = nn.ReLU()
+        
+    def forward(self, data):
+        """
+        Forward pass of the encoder.
+
+        Args:
+            data (data): A data of HeteroData graphs.
+
+        Returns:
+            Tensor: Latent representations of shape (num_graphs, out_channels).
+        """
+        x_dict = data.x_dict  # Dict of node_type -> node_features
+
+        # print("x_dict", x_dict["author"].shape)
+        # print()
+        # in the beginning author shape was (200,32),
+        # because we have 10 author nodes per graph, and we data size 4 and sequence size 5, so 10*4*5=200
+        edge_index_dict = data.edge_index_dict  # Dict of edge_type -> edge_index
+        
+        for conv in self.convs:
+            x_dict = conv(x_dict, edge_index_dict)  # Perform HeteroConv
+            x_dict = {key: self.activation(x) for key, x in x_dict.items()}  # Apply activation
+
+        # after covilution for every node type shape should be (200,64)
+        
+       
+       
+        
+        # for every node type we take a mean of all of the nodes from one graph
+        x_dict = {key: global_mean_pool(x_dict[key], data[key].batch) for key in data.node_types}
+        # print("shape after pooling for author")
+        # print(x_dict["author"].shape) #(20, 64) so for every graph - 64 vector 
+        # print("shape after pooling for paper")
+        # print(x_dict["paper"].shape) #(20, 64) so for every graph - 64 vector
+        # print("shape after pooling for institution")
+        # print(x_dict["institution"].shape) #(20, 64) so for every graph - 64 vector
+        # # 
+        # print("AAAAAA")
+        # print(x_dict.values())
+
+        # here we connect along the 0 dimension, creating extra dimension
+        # `stack` creates extra dimension, while `cat` connects along a certain dim
+        # after stack we get [3, 20, 64], which is [node_types_num, num_of_graphs, hidden_size]
+        # then we are summing up every element along the node_type dimension. So, sum up all the node types.
+        # we should get again [20, 64] shape. For every graph, we get 64 size vector
+        graph_emb = torch.stack(list(x_dict.values()), dim=0).sum(dim=0)
+ 
+        
+        # Project to desired latent dimension
+        out = self.linear(graph_emb)  # Shape: (num_graphs, out_channels)
+        
+        return out
