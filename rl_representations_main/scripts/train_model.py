@@ -34,7 +34,7 @@ sys.path.append(ROOT_DIR)
 np.set_printoptions(suppress=True, linewidth=200, precision=2)
 
 @click.command()
-@click.option('--autoencoder', '-a', type=click.Choice(['AE', 'AIS', 'CDE', 'DDM', 'DST', 'ODERNN', 'RNN', 'GNN']))
+@click.option('--autoencoder', '-a', type=click.Choice(['AE', 'AIS', 'CDE', 'DDM', 'DST', 'ODERNN', 'RNN', 'GNN', 'RANDOM']))
 @click.option('--domain', '-d', default='sepsis', help="Only 'sepsis' implemented for now")
 @click.option('--autoencoder_config_override', '-d', default='', help="Option introduced to override autoencoder config if file provided")
 @click.option('--options', '-o', multiple=True, nargs=2, type=click.Tuple([str, str]))

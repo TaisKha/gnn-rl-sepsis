@@ -174,6 +174,11 @@ class Experiment(object):
             self.gen = self.container.make_encoder(self.hidden_size, self.state_dim, self.num_actions, context_input=self.context_input, context_dim=self.context_dim)
             self.pred = self.container.make_decoder(self.hidden_size, self.state_dim, self.num_actions)
               
+        elif self.autoencoder == 'RANDOM':
+            self.container = AE.ModelContainer(device)
+            self.gen = self.container.make_encoder(self.hidden_size, self.state_dim, self.num_actions, context_input=self.context_input, context_dim=self.context_dim)
+            self.pred = self.container.make_decoder(self.hidden_size, self.state_dim, self.num_actions)
+              
         elif self.autoencoder == 'DST':
             self.dst_hypers = dst_hypers  
             self.container = DST.ModelContainer(device)            
@@ -265,14 +270,20 @@ class Experiment(object):
             self.test_coefs = load_cde_data('test', self.test_dataset, self.cde_hypers['coefs_folder'],
                                             self.context_input, device)            
             
-        
-    
-    def load_model_from_checkpoint(self, checkpoint_file_path):
-        checkpoint = torch.load(checkpoint_file_path)
-        self.gen.load_state_dict(checkpoint['{}_gen_state_dict'.format(self.autoencoder.lower())])
-        self.pred.load_state_dict(checkpoint['{}_pred_state_dict'.format(self.autoencoder.lower())])
-        if self.autoencoder == 'DDM':
-            self.dyn.load_state_dict(checkpoint['{}_dyn_state_dict'.format(self.autoencoder.lower())])
+    def load_models_from_files(self):
+        # print(f"DEBUG {self.gen_file=}")
+        # print(f"DEBUG {self.pred_file=}")
+        # # if self.autoencoder == "GNN":
+        # #     # I have no idea why it works like that and doesnt when I combine the statements
+        # #     state_dict = torch.load(self.gen_file, weights_only=False)
+        # #     self.gen.load_state_dict(state_dict)
+        # #     # print(self.gen)
+        # #     # self.gen.encoder.load_state_dict(torch.load(self.gen_file), weights_only=False)
+        # # else:
+        self.gen.load_state_dict(torch.load(self.gen_file, weights_only=False))
+        self.pred.load_state_dict(torch.load(self.pred_file, weights_only=False))
+        self.container.gen = self.gen
+        self.container.pred = self.pred
         print("Experiment: generator and predictor models loaded.")
 
     def train_autoencoder(self):
@@ -472,6 +483,27 @@ class Experiment(object):
                 np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
             except Exception as e:
                     print(e)
+
+        # For 0 epochs.
+        if self.autoencoder == "RANDOM":
+            try:
+                save_dict = {
+                            'epoch': self.autoencoder_num_epochs-1,
+                            'gen_state_dict': self.gen.state_dict(),
+                            'pred_state_dict': self.pred.state_dict(),
+                            'optimizer_state_dict': self.optimizer.state_dict(),
+                            'loss': self.autoencoding_losses,
+                            'validation_loss': self.autoencoding_losses_validation,
+                            }
+                if self.autoencoder == 'DDM':
+                    save_dict['dyn_state_dict'] = self.dyn.state_dict()
+                    torch.save(self.dyn.state_dict(), self.dyn_file)
+                torch.save(self.gen.state_dict(), self.gen_file)
+                torch.save(self.pred.state_dict(), self.pred_file)
+                torch.save(save_dict, self.checkpoint_file)
+                np.save(self.data_folder + '/{}_losses.npy'.format(self.autoencoder.lower()), np.array(self.autoencoding_losses))
+            except Exception as e:
+                    print(e)
     
            
     # TODO later -> split this fuction into 3 functions, vause it is too huge: 
@@ -486,7 +518,11 @@ class Experiment(object):
         This method will also evaluate the decoder's ability to correctly predict the next observation from the and also will
         evaluate the trained representation's correlation with the acuity scores.
         '''
-
+        
+        self.load_models_from_files()
+        
+        
+        
         # Initialize the replay buffer
         self.replay_buffer = ReplayBuffer(self.hidden_size, self.minibatch_size, 350000, self.device, encoded_state=True, obs_state_dim=self.state_dim + (self.context_dim if self.context_input else 0))
 
@@ -533,11 +569,16 @@ class Experiment(object):
                     # Just saying though. If we don't want to punish the agent for that, we can create the mast based on the next_obs.
                     # I won't change it for the reproducability purposes, but it is something to consider for future.
                     mask = (cur_obs==0).all(dim=2)
-                    
+
+                    # For models that use self.loop() for evaluation
+                    self.container.gen.eval()
+                    self.container.pred.eval()
+
+                    # For models that use self.gen() and self.pred() separately from self.container.loop()
                     self.gen.eval()
                     self.pred.eval()
 
-                    if self.autoencoder in ['AE', 'AIS', 'RNN']:
+                    if self.autoencoder in ['AE', 'AIS', 'RNN', 'RANDOM']:
 
                         if self.context_input:
                             # here all the actions from the batch for almost all the timesteps(minus 2) are included in the input,they are added to the input to the generator
@@ -589,7 +630,7 @@ class Experiment(object):
 
                     if i_set == 2:  # If we're evaluating the models on the test set...
 
-                        if self.autoencoder != 'GNN':
+                        if self.autoencoder not in ['GNN', 'AI', 'RANDOM']:
                         
                             # Compute the Pearson correlation of the learned representations and the acuity scores
                             corr = torch.zeros((cur_obs.shape[0], representations.shape[-1], cur_scores.shape[-1]))
@@ -656,8 +697,8 @@ class Experiment(object):
             "polyak_target_update": True,
             "target_update_freq": 1,
             "tau": 0.01,
-            # "max_timesteps": 5e5,
-            "max_timesteps": 1e6,
+            "max_timesteps": 5e5,
+            # "max_timesteps": 1e6,
             "BCQ_threshold": 0.3,
             "buffer_dir": self.buffer_save_file,
             "policy_file": self.policy_save_file+f'_l{pol_learning_rate}.pt',
