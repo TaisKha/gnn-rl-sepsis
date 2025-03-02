@@ -134,7 +134,7 @@ def run(autoencoder, domain, autoencoder_config_override, options):
         experiment.train_autoencoder()
         
     if params['log_BCQ_training']:
-        experiment.evaluate_trained_model()
+        # experiment.evaluate_trained_model()
         experiment.train_dBCQ_policy(params['pol_learning_rate'])
     print('=' * 30)
 

@@ -54,18 +54,32 @@ def get_averaged_runs_data(project_name, run_ids, group_name, alpha_param=0.10, 
 
 # Main code
 project_name = "taiskhakharova-brandenburgische-technische-universit-t-c/sepsis-BCQ"
-gnn1_run_ids = ['43nsp7vr', 'us51u36n', '5u9bviii', 'ukj3k2qk']
-gnn2_run_ids = ['j603d09k', 'tfnxpkfw', 'wltsavsm', '8cg1ryti']
-ae_run_ids = ['fw0c56a5', '4mervybm', '4v4fccny']
+
+# # With no training of encoder, random init only
+# gnn1_run_ids = ['43nsp7vr', 'us51u36n', '5u9bviii', 'ukj3k2qk', '405k564x']
+# gnn2_run_ids = ['j603d09k', 'tfnxpkfw', 'wltsavsm', '8cg1ryti', '21gwe9o5']
+# ae_run_ids = ['fw0c56a5', '4mervybm', '4v4fccny', 'yjqoovg4', 'dwpca2qv']
+
+# With training of encoder. 5e5
+
+# gnn1_run_ids = ['o1tjq0dn', 'lisanu6b', 'm0eh839i']
+# gnn2_run_ids = ['mf7kpoci', 't7gs87ul', '3qcq4ugz']
+# ae_run_ids = ['7nqlbmr2', 'te756qy6', '0zkxyj8r']
+
+
+# # With training of encoder. 1e6
+gnn1_run_ids = ['8cw6v521', 'n8gkude9', 'f55f3c7l']
+gnn2_run_ids = ['i1j5o9pq', 'uak6eeri', 'rq695mvn']
 
 
 # Get data for each group
-group1_data = get_averaged_runs_data(project_name, gnn1_run_ids, "GNN 1", alpha_param=ALPHA, smooth=SMOOTH)
-group2_data = get_averaged_runs_data(project_name, gnn2_run_ids, "GNN 2", alpha_param=ALPHA, smooth=SMOOTH)
-group3_data = get_averaged_runs_data(project_name, ae_run_ids, "AE", alpha_param=ALPHA, smooth=SMOOTH)
+group1_data = get_averaged_runs_data(project_name, gnn1_run_ids, "GNN-SAGE", alpha_param=ALPHA, smooth=SMOOTH)
+group2_data = get_averaged_runs_data(project_name, gnn2_run_ids, "GNN-GATv2Conv ", alpha_param=ALPHA, smooth=SMOOTH)
+# group3_data = get_averaged_runs_data(project_name, ae_run_ids, "AE", alpha_param=ALPHA, smooth=SMOOTH)
 
 # Combine all data
-combined_df = pd.concat([group1_data, group2_data,  group3_data])
+combined_df = pd.concat([group1_data, group2_data])
+# combined_df = pd.concat([group1_data, group2_data,  group3_data])
 
 # The plotting function doesn't need smoothing anymore since data is already smoothed
 def create_loss_plot(combined_df, colors=['#2ecc71', '#e74c3c', '#3498db']):
@@ -140,7 +154,8 @@ def create_loss_plot(combined_df, colors=['#2ecc71', '#e74c3c', '#3498db']):
     plt.tight_layout()
     return fig
 
-colors = ['#7FB3D5' ,'#F5B7B1', '#A2D9CE']
+# colors = ['#7FB3D5' ,'#F5B7B1', '#A2D9CE']
+colors = ['#7FB3D5' ,'#F5B7B1']
 
 fig = create_loss_plot(combined_df, colors=colors)
 if SMOOTH:
