@@ -1,9 +1,0 @@
-- delete everything
-
-MATCH (n)
-DETACH DELETE n;
-
-- show everything
-
-MATCH ()-[r]->()
-RETURN *

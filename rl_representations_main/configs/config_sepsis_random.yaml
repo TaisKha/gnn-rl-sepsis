@@ -1,0 +1,10 @@
+#like AE but with 0 training 
+autoencoder: 'RANDOM' # 'Autoencoder'
+autoencoder_num_epochs: 0    
+#the following params do not matter 
+hidden_size: 64                    
+autoencoder_lr: 0.0005   
+autoencoder_saving_period: 1
+corr_coeff_param: 0               
+context_input: True   
+pol_learning_rate: 0.001

@@ -4,8 +4,8 @@ log_BCQ_training: True
 
 device: 'cuda:2'
 #device: 'cpu'
-random_seed: 1234 # updated by run scripts 25, 32, 1234, 2020
-random_seed_bcq: 25
+random_seed: 1234 # updated by run scripts 25, 32, 1234, 2020, and one more - 2025
+random_seed_bcq: 2025
 folder_location: './results/'
 #  commented out because will be created based on hyperparameters
 # folder_name: 'test' # updated by run scripts 
