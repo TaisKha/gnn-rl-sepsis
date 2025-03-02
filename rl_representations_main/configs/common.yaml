@@ -2,8 +2,8 @@
 log_autoencoder_training: False
 log_BCQ_training: True
 
-device: 'cuda:2'
-#device: 'cpu'
+device: 'cuda:2' #or 'cpu'
+
 random_seed: 1234 # updated by run scripts 25, 32, 1234, 2020, and one more - 2025
 random_seed_bcq: 2025
 folder_location: './results/'
@@ -21,7 +21,7 @@ num_actions: 25
 context_dim: 5                     # Number of context/demographic/binary indicator variables we'll use as input
 
  
-dem_context: True
+dem_context: True # do not change!
 bcq_num_nodes: 64 # as in the paper
 # update these manually
 storage_path: '/home/khakhtai/gnn-rl-sepsis/'
