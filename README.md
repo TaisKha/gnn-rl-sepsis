@@ -2,7 +2,7 @@
 
 1. Install Pipenv and run `pipenv shell`.
 2. Check correctness of configs for common and model specific in `rl_representations_main/configs`.
-3. Make sure that BC cloning model is there as it is crucial for the evaluation. If not train it. See instructions in `rl_representations_main/READ.md`.
+3. Make sure that BC cloning model is there as it is crucial for the evaluation. If not train it. See instructions in `rl_representations_main/README.md`.
 4. Go to rl-representations folder and run `python3 scripts/train_model.py --autoencoder GNN`
 
 ## Pipenv hints
